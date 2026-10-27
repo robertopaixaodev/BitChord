@@ -135,6 +135,29 @@ data class Song(
     val playbackSourceType: PlaybackSourceType? = null,
     /** Browse id for an album, playlist, or other source page. */
     val playbackSourceId: String? = null,
+    /**
+     * International Standard Recording Code for this recording, when a source
+     * supplies one. Null means no source has identified it yet; it is not a
+     * statement that the recording has no ISRC.
+     */
+    val isrc: String? = null,
+    /**
+     * MusicBrainz recording id, when a source supplies one. Kept separate from
+     * [isrc]: a recording can have either, both, or neither.
+     */
+    val mbid: String? = null,
+    /** Disc number within a multi-disc release, when known. */
+    val discNumber: Int? = null,
+    /** The album's credited artist, which can differ from the track artist. */
+    val albumArtist: String? = null,
+    /** Genre of the release, when a source supplies one. */
+    val genre: String? = null,
+    /** Release year, when a source supplies one. */
+    val year: Int? = null,
+    /** Record label, when a source supplies one. */
+    val label: String? = null,
+    /** Composer credit, when a source supplies one. */
+    val composer: String? = null,
 ) {
     /** Legacy derived property: true if and only if [queueTier] is [QueueTier.AUTOPLAY]. */
     val fromAutoplay: Boolean get() = queueTier == QueueTier.AUTOPLAY
@@ -166,6 +189,14 @@ data class Song(
         playbackSource: String? = null,
         playbackSourceType: PlaybackSourceType? = null,
         playbackSourceId: String? = null,
+        isrc: String? = null,
+        mbid: String? = null,
+        discNumber: Int? = null,
+        albumArtist: String? = null,
+        genre: String? = null,
+        year: Int? = null,
+        label: String? = null,
+        composer: String? = null,
     ) : this(
         videoId = videoId,
         title = title,
@@ -193,6 +224,14 @@ data class Song(
         playbackSource = playbackSource,
         playbackSourceType = playbackSourceType,
         playbackSourceId = playbackSourceId,
+        isrc = isrc,
+        mbid = mbid,
+        discNumber = discNumber,
+        albumArtist = albumArtist,
+        genre = genre,
+        year = year,
+        label = label,
+        composer = composer,
     )
 }
 

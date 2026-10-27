@@ -237,9 +237,18 @@ fun Song.toSongBundle(): Bundle = bundleOf(
     "isExplicit" to (isExplicit ?: false),
     "queueTier" to queueTier.name,
     "queueEntryId" to queueEntryId,
+    "isrc" to isrc,
+    "mbid" to mbid,
+    "albumArtist" to albumArtist,
+    "genre" to genre,
+    "label" to label,
+    "composer" to composer,
     // `bundleOf` has no overload for a list of strings, so the two halves of
     // the credits go in afterwards.
 ).apply {
+    putNullableInt("trackNumber", trackNumber)
+    putNullableInt("discNumber", discNumber)
+    putNullableInt("year", year)
     putStringArrayList(ARTISTS_NAMES, ArrayList(artists.map { it.name }))
     putStringArrayList(ARTISTS_IDS, ArrayList(artists.map { it.browseId.orEmpty() }))
 }
@@ -272,6 +281,15 @@ fun songFromBundle(b: Bundle): Song {
         isExplicit = if (b.containsKey("isExplicit")) b.getBoolean("isExplicit") else null,
         queueTier = queueTier,
         queueEntryId = b.getString("queueEntryId"),
+        isrc = b.getString("isrc"),
+        mbid = b.getString("mbid"),
+        discNumber = b.getNullableInt("discNumber"),
+        albumArtist = b.getString("albumArtist"),
+        genre = b.getString("genre"),
+        year = b.getNullableInt("year"),
+        label = b.getString("label"),
+        composer = b.getString("composer"),
+        trackNumber = b.getNullableInt("trackNumber"),
     )
 }
 
@@ -461,6 +479,15 @@ fun MediaItem.toSong() = Song(
     playbackSourceId = mediaMetadata.extras?.getString(EXTRA_PLAYBACK_SOURCE_ID),
     localUri = mediaMetadata.extras?.getString(EXTRA_LOCAL_URI),
     localPath = mediaMetadata.extras?.getString(EXTRA_LOCAL_PATH),
+    isrc = mediaMetadata.extras?.getString(EXTRA_ISRC),
+    mbid = mediaMetadata.extras?.getString(EXTRA_MBID),
+    discNumber = mediaMetadata.extras?.getNullableInt(EXTRA_DISC_NUMBER),
+    albumArtist = mediaMetadata.extras?.getString(EXTRA_ALBUM_ARTIST),
+    genre = mediaMetadata.extras?.getString(EXTRA_GENRE),
+    year = mediaMetadata.extras?.getNullableInt(EXTRA_YEAR),
+    label = mediaMetadata.extras?.getString(EXTRA_LABEL),
+    composer = mediaMetadata.extras?.getString(EXTRA_COMPOSER),
+    trackNumber = mediaMetadata.extras?.getNullableInt(EXTRA_TRACK_NUMBER),
 )
 
 internal val mediaItemTiers = java.util.Collections.synchronizedMap(java.util.WeakHashMap<MediaItem, QueueTier>())
@@ -564,6 +591,35 @@ private const val EXTRA_SOURCE_QUALITY = "bitchord.sourceQuality"
 private const val EXTRA_SOURCE_HI_RES = "bitchord.sourceHiRes"
 private const val EXTRA_IS_VIDEO = "bitchord.isVideo"
 private const val EXTRA_VIDEO_ORIGIN = "bitchord.isVideoOrigin"
+
+/**
+ * Musical identity and release credits carried alongside the queue row.
+ *
+ * These are attributes, not identity: [EXTRA_QUEUE_ENTRY_ID] and the item's
+ * media id remain the only keys. Null means the source did not say, and a
+ * missing key is how that survives the round trip.
+ */
+private const val EXTRA_ISRC = "bitchord.isrc"
+private const val EXTRA_MBID = "bitchord.mbid"
+private const val EXTRA_TRACK_NUMBER = "bitchord.trackNumber"
+private const val EXTRA_DISC_NUMBER = "bitchord.discNumber"
+private const val EXTRA_ALBUM_ARTIST = "bitchord.albumArtist"
+private const val EXTRA_GENRE = "bitchord.genre"
+private const val EXTRA_YEAR = "bitchord.year"
+private const val EXTRA_LABEL = "bitchord.label"
+private const val EXTRA_COMPOSER = "bitchord.composer"
+
+/**
+ * Bundle has no nullable int, and a sentinel would turn "the source did not
+ * say" into a real value. A missing key is therefore the null representation:
+ * only write when there is a value, and only read when the key is present.
+ */
+private fun Bundle.putNullableInt(key: String, value: Int?) {
+    if (value != null) putInt(key, value)
+}
+
+private fun Bundle.getNullableInt(key: String): Int? =
+    if (containsKey(key)) getInt(key) else null
 
 /** Set only on the replacement item produced by [QualityUpgrade]. */
 const val EXTRA_QUALITY_UPGRADED = "bitchord.qualityUpgraded"
@@ -744,7 +800,10 @@ fun Song.toMediaItem(): MediaItem {
                     artistId != null || albumId != null || setVideoId != null ||
                     isExplicit != null || isVideo || isVideoOrigin || radioName != null ||
                     sourceQuality != null ||
-                    playbackSource != null || playbackSourceType != null || playbackSourceId != null
+                    playbackSource != null || playbackSourceType != null || playbackSourceId != null ||
+                    trackNumber != null || isrc != null || mbid != null ||
+                    discNumber != null || albumArtist != null || genre != null ||
+                    year != null || label != null || composer != null
                 ) {
                     setExtras(
                         bundleOf(
@@ -766,7 +825,17 @@ fun Song.toMediaItem(): MediaItem {
                             EXTRA_VIDEO_ORIGIN to isVideoOrigin,
                             EXTRA_SOURCE_QUALITY to sourceQuality,
                             EXTRA_SOURCE_HI_RES to sourceHiRes,
-                        ),
+                            EXTRA_ISRC to isrc,
+                            EXTRA_MBID to mbid,
+                            EXTRA_ALBUM_ARTIST to albumArtist,
+                            EXTRA_GENRE to genre,
+                            EXTRA_LABEL to label,
+                            EXTRA_COMPOSER to composer,
+                        ).apply {
+                            putNullableInt(EXTRA_TRACK_NUMBER, trackNumber)
+                            putNullableInt(EXTRA_DISC_NUMBER, discNumber)
+                            putNullableInt(EXTRA_YEAR, year)
+                        },
                     )
                 }
             }

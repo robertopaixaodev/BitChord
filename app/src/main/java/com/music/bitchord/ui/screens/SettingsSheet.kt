@@ -1583,6 +1583,10 @@ fun SettingsScreen(
                 withLink(LinkAnnotation.Url("https://bitchord.kushagrasingh.in/", linkStyles)) {
                     append("Website")
                 }
+                append("\n")
+                withLink(LinkAnnotation.Url("https://github.com/robertopaixaodev/BitChord", linkStyles)) {
+                    append("Fork por robertopaixaodev")
+                }
                 append("\n~YouTube Music & Listen Together Backend")
             },
             style = MaterialTheme.typography.labelSmall,

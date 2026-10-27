@@ -326,6 +326,107 @@ class BoundedContextPersistenceTest {
         }
     }
 
+    @Test
+    fun `round trip preserves musical identity in canonical and physical songs`() {
+        val source = QueueSource("Identity", PlaybackSourceType.BROWSE, "identity")
+        val identified = song("track-0").copy(
+            queueTier = QueueTier.CONTEXT,
+            isrc = "USRC17607839",
+            mbid = "11111111-2222-3333-4444-555555555555",
+            trackNumber = 7,
+            discNumber = 2,
+            albumArtist = "Album Artist",
+            genre = "Jazz",
+            year = 1999,
+            label = "Label Records",
+            composer = "Composer Name",
+        )
+        val canonical = listOf(identified)
+        val window = QueueWindow(1, shuffleSeed = 1L).startAt(0)
+        val state = state(
+            canonical = canonical,
+            source = source,
+            window = window.snapshot(),
+            entries = listOf(
+                BoundedContextPersistence.Entry(
+                    identified.copy(queueEntryId = "current"),
+                    canonicalIndex = 0,
+                    cycleId = 0L,
+                ),
+            ),
+            currentIndex = 0,
+            sourceSnapshot = context(canonical, source),
+        )
+
+        val raw = requireNotNull(BoundedContextPersistence.encode(state))
+        val restored = requireNotNull(BoundedContextPersistence.decode(raw))
+
+        assertIdentityEquals(identified, restored.context.songs.single())
+        assertIdentityEquals(identified, restored.entries.single().song)
+    }
+
+    @Test
+    fun `old snapshot without identity decodes every identity field as null`() {
+        val source = QueueSource("Identity", PlaybackSourceType.BROWSE, "identity")
+        val plain = song("track-0").copy(queueTier = QueueTier.CONTEXT)
+        val canonical = listOf(plain)
+        val window = QueueWindow(1, shuffleSeed = 1L).startAt(0)
+        val state = state(
+            canonical = canonical,
+            source = source,
+            window = window.snapshot(),
+            entries = listOf(
+                BoundedContextPersistence.Entry(
+                    plain.copy(queueEntryId = "current"),
+                    canonicalIndex = 0,
+                    cycleId = 0L,
+                ),
+            ),
+            currentIndex = 0,
+            sourceSnapshot = context(canonical, source),
+        )
+
+        val oldRaw = requireNotNull(BoundedContextPersistence.encode(state))
+        assertFalse(oldRaw.contains("\"isrc\""))
+        assertFalse(oldRaw.contains("\"mbid\""))
+        assertFalse(oldRaw.contains("\"trackNumber\""))
+        assertFalse(oldRaw.contains("\"discNumber\""))
+        assertFalse(oldRaw.contains("\"albumArtist\""))
+        assertFalse(oldRaw.contains("\"genre\""))
+        assertFalse(oldRaw.contains("\"year\""))
+        assertFalse(oldRaw.contains("\"label\""))
+        assertFalse(oldRaw.contains("\"composer\""))
+
+        val restored = requireNotNull(BoundedContextPersistence.decode(oldRaw))
+
+        assertIdentityNull(restored.context.songs.single())
+        assertIdentityNull(restored.entries.single().song)
+    }
+
+    private fun assertIdentityEquals(expected: Song, actual: Song) {
+        assertEquals(expected.isrc, actual.isrc)
+        assertEquals(expected.mbid, actual.mbid)
+        assertEquals(expected.trackNumber, actual.trackNumber)
+        assertEquals(expected.discNumber, actual.discNumber)
+        assertEquals(expected.albumArtist, actual.albumArtist)
+        assertEquals(expected.genre, actual.genre)
+        assertEquals(expected.year, actual.year)
+        assertEquals(expected.label, actual.label)
+        assertEquals(expected.composer, actual.composer)
+    }
+
+    private fun assertIdentityNull(actual: Song) {
+        assertNull(actual.isrc)
+        assertNull(actual.mbid)
+        assertNull(actual.trackNumber)
+        assertNull(actual.discNumber)
+        assertNull(actual.albumArtist)
+        assertNull(actual.genre)
+        assertNull(actual.year)
+        assertNull(actual.label)
+        assertNull(actual.composer)
+    }
+
     private fun context(
         songs: List<Song>,
         source: QueueSource,

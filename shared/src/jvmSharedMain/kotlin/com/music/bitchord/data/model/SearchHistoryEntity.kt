@@ -24,6 +24,15 @@ data class SearchHistoryEntity(
     val entityType: EntityType,
     /** Timestamp (epoch millis) — updated on each re-tap to bubble it to the top. */
     val timestamp: Long = System.currentTimeMillis(),
+    val isrc: String? = null,
+    val mbid: String? = null,
+    val trackNumber: Int? = null,
+    val discNumber: Int? = null,
+    val albumArtist: String? = null,
+    val genre: String? = null,
+    val year: Int? = null,
+    val label: String? = null,
+    val composer: String? = null,
 )
 
 enum class EntityType {
@@ -44,5 +53,14 @@ fun SearchHistoryEntity.toSong(): Song? = if (entityType == EntityType.TRACK && 
         title = title,
         artist = subtitle,
         thumbnailUrl = artworkUrl,
+        isrc = isrc,
+        mbid = mbid,
+        trackNumber = trackNumber,
+        discNumber = discNumber,
+        albumArtist = albumArtist,
+        genre = genre,
+        year = year,
+        label = label,
+        composer = composer,
     )
 } else null

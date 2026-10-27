@@ -1,0 +1,96 @@
+package com.music.bitchord.data.enrichment
+
+import com.music.bitchord.data.TrackLog
+import com.music.bitchord.data.model.Song
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+
+/**
+ * Resolves the nine identity fields in a fixed, cheapest-first order:
+ * iTunes (basic), MusicBrainz (ISRC/MBID), then Deezer (release credits).
+ *
+ * Nothing here touches the player. A caller in a later wave can ask for an
+ * enriched [Song] or hand one to [enrichInBackground]; the service owns its
+ * scope and its cache, so it is safe to call from a screen or a service without
+ * reaching for `GlobalScope`.
+ */
+class EnrichmentService(
+    private val cache: EnrichmentCache,
+    private val providers: List<EnrichmentProvider> = defaultProviders(),
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+) {
+
+    /**
+     * Returns the song with every field the cache or a provider could fill, or
+     * null when nothing was found. Network and parse failures are logged and
+     * never escape to the caller.
+     */
+    suspend fun enrich(song: Song): Song? {
+        if (song.videoId.isBlank()) return null
+        return try {
+            val cached = cache.get(song.videoId)
+            if (cached != null) {
+                if (cached.isFreshMiss()) return null
+                if (cached.hasAny) return song.mergedWith(cached.toPartial())
+            }
+
+            var working = song
+            var resolvedBy: String? = null
+            for (provider in providers) {
+                if (working.hasCompleteIdentity()) break
+                val partial = try {
+                    provider.enrich(working)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    TrackLog.w(TAG, "${provider.name} provider failed for '${song.title}'", e, song.videoId)
+                    null
+                }
+                if (partial != null && partial.hasAny) {
+                    working = working.mergedWith(partial)
+                    resolvedBy = partial.provider
+                }
+            }
+
+            val resolved = resolvedBy
+            if (resolved == null) {
+                cache.putMiss(song.videoId)
+                null
+            } else {
+                cache.put(working, resolved)
+                working
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            TrackLog.w(TAG, "Enrichment failed for '${song.title}'", e, song.videoId)
+            null
+        }
+    }
+
+    /** Fire-and-forget on the service's own scope; failures are already swallowed by [enrich]. */
+    fun enrichInBackground(song: Song) {
+        scope.launch {
+            enrich(song)
+        }
+    }
+
+    /** Cancels any background work; useful for tests and for a future owned lifecycle. */
+    internal fun close() {
+        scope.cancel()
+    }
+
+    private companion object {
+        const val TAG = "Enrichment"
+
+        fun defaultProviders(): List<EnrichmentProvider> = listOf(
+            ItunesProvider(),
+            MusicBrainzProvider(),
+            DeezerProvider(),
+        )
+    }
+}

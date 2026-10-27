@@ -8,7 +8,9 @@ import com.music.bitchord.data.sources.SourceResolver
 import com.music.bitchord.data.sources.StreamRequest
 import com.music.bitchord.download.DownloadStore
 import com.music.bitchord.download.SavedSongMetadata
+import com.music.bitchord.download.resolveSavedSongIdentity
 import com.music.bitchord.download.resolvedDownloadDates
+import com.music.bitchord.download.toDownloadedSong
 import com.music.bitchord.download.youtubeDownloadBadge
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -220,6 +222,146 @@ class DownloadStoreTest {
      * be lossless, so someone with their own FLAC server streamed the FLAC and
      * downloaded a transcode of the same recording.
      */
+    @Test
+    fun `saved metadata rebuilds every identity field`() {
+        val metadata = SavedSongMetadata(
+            videoId = "identity-1",
+            title = "Title",
+            artist = "Artist",
+            uri = "file:///song.flac",
+            isrc = "USRC17607839",
+            mbid = "11111111-2222-3333-4444-555555555555",
+            trackNumber = 7,
+            discNumber = 2,
+            albumArtist = "Album Artist",
+            genre = "Jazz",
+            year = 1999,
+            label = "Label Records",
+            composer = "Composer Name",
+        )
+
+        val song = metadata.toDownloadedSong(
+            localUri = metadata.uri,
+            downloadFormat = "FLAC",
+            dateAddedSeconds = 10L,
+            dateModifiedSeconds = 20L,
+        )
+
+        assertEquals(metadata.isrc, song.isrc)
+        assertEquals(metadata.mbid, song.mbid)
+        assertEquals(metadata.trackNumber, song.trackNumber)
+        assertEquals(metadata.discNumber, song.discNumber)
+        assertEquals(metadata.albumArtist, song.albumArtist)
+        assertEquals(metadata.genre, song.genre)
+        assertEquals(metadata.year, song.year)
+        assertEquals(metadata.label, song.label)
+        assertEquals(metadata.composer, song.composer)
+        assertEquals("file:///song.flac", song.localUri)
+        assertEquals("FLAC", song.downloadFormat)
+    }
+
+    @Test
+    fun `downloaded song can keep the collection alias as its identity`() {
+        val metadata = SavedSongMetadata(
+            videoId = "catalogue-alias",
+            title = "Title",
+            artist = "Artist",
+            uri = "file:///song.flac",
+        )
+
+        val song = metadata.toDownloadedSong(
+            videoId = "playlist-entry",
+            localUri = metadata.uri,
+            downloadFormat = null,
+            dateAddedSeconds = null,
+            dateModifiedSeconds = null,
+        )
+
+        assertEquals("playlist-entry", song.videoId)
+    }
+
+    @Test
+    fun `saved metadata with no identity rebuilds nulls`() {
+        val metadata = SavedSongMetadata(
+            videoId = "identity-empty",
+            title = "Title",
+            artist = "Artist",
+            uri = "file:///song.flac",
+        )
+
+        val song = metadata.toDownloadedSong(
+            localUri = metadata.uri,
+            downloadFormat = null,
+            dateAddedSeconds = null,
+            dateModifiedSeconds = null,
+        )
+
+        assertNull(song.isrc)
+        assertNull(song.mbid)
+        assertNull(song.trackNumber)
+        assertNull(song.discNumber)
+        assertNull(song.albumArtist)
+        assertNull(song.genre)
+        assertNull(song.year)
+        assertNull(song.label)
+        assertNull(song.composer)
+    }
+
+    @Test
+    fun `saved identity prefers the fetched row and falls back to the tapped row`() {
+        val asked = Song(
+            videoId = "asked",
+            title = "Asked",
+            artist = "Artist",
+            thumbnailUrl = null,
+            isrc = "asked-isrc",
+            mbid = "asked-mbid",
+            trackNumber = 7,
+            discNumber = 2,
+            albumArtist = "Asked Album Artist",
+            genre = "Asked Genre",
+            year = 1999,
+            label = "Asked Label",
+            composer = "Asked Composer",
+        )
+        val fetched = Song(
+            videoId = "fetched",
+            title = "Fetched",
+            artist = "Artist",
+            thumbnailUrl = null,
+            isrc = "fetched-isrc",
+        )
+
+        val identity = resolveSavedSongIdentity(asked, fetched)
+
+        assertEquals("fetched-isrc", identity.isrc)
+        assertEquals("asked-mbid", identity.mbid)
+        assertEquals(7, identity.trackNumber)
+        assertEquals(2, identity.discNumber)
+        assertEquals("Asked Album Artist", identity.albumArtist)
+        assertEquals("Asked Genre", identity.genre)
+        assertEquals(1999, identity.year)
+        assertEquals("Asked Label", identity.label)
+        assertEquals("Asked Composer", identity.composer)
+    }
+
+    @Test
+    fun `old download metadata decodes identity as null`() {
+        val old = Json.decodeFromString<SavedSongMetadata>(
+            """{"videoId":"abc","title":"Song","artist":"Artist","uri":"file:///song.webm"}""",
+        )
+
+        assertNull(old.isrc)
+        assertNull(old.mbid)
+        assertNull(old.trackNumber)
+        assertNull(old.discNumber)
+        assertNull(old.albumArtist)
+        assertNull(old.genre)
+        assertNull(old.year)
+        assertNull(old.label)
+        assertNull(old.composer)
+    }
+
     @Test
     fun `a capped streaming ceiling no longer decides what a download keeps`() {
         val cellular = AppSettings.audioQualityCellular.value

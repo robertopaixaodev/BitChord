@@ -132,6 +132,15 @@ object PartyPersonalQueueStash {
         val source: String? = null,
         val sourceType: String? = null,
         val sourceId: String? = null,
+        val isrc: String? = null,
+        val mbid: String? = null,
+        val trackNumber: Int? = null,
+        val discNumber: Int? = null,
+        val albumArtist: String? = null,
+        val genre: String? = null,
+        val year: Int? = null,
+        val label: String? = null,
+        val composer: String? = null,
     ) {
         fun toSong(): Song {
             val resolvedTier = tier?.let { runCatching { com.music.bitchord.data.model.QueueTier.valueOf(it) }.getOrNull() }
@@ -155,6 +164,15 @@ object PartyPersonalQueueStash {
                 playbackSourceId = sourceId,
                 localUri = local,
                 localPath = path,
+                isrc = isrc,
+                mbid = mbid,
+                trackNumber = trackNumber,
+                discNumber = discNumber,
+                albumArtist = albumArtist,
+                genre = genre,
+                year = year,
+                label = label,
+                composer = composer,
             )
         }
 
@@ -177,6 +195,15 @@ object PartyPersonalQueueStash {
                 source = song.playbackSource,
                 sourceType = song.playbackSourceType?.name,
                 sourceId = song.playbackSourceId,
+                isrc = song.isrc,
+                mbid = song.mbid,
+                trackNumber = song.trackNumber,
+                discNumber = song.discNumber,
+                albumArtist = song.albumArtist,
+                genre = song.genre,
+                year = song.year,
+                label = song.label,
+                composer = song.composer,
             )
         }
     }

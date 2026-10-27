@@ -138,6 +138,61 @@ class PartyPersonalQueueStashTest {
         assertFalse(restored.wasPlaying)
     }
 
+    @Test
+    fun testIdentityRoundTrip() {
+        val original = Song(
+            videoId = "identity-1",
+            title = "Title",
+            artist = "Artist",
+            thumbnailUrl = null,
+            isrc = "USRC17607839",
+            mbid = "11111111-2222-3333-4444-555555555555",
+            trackNumber = 7,
+            discNumber = 2,
+            albumArtist = "Album Artist",
+            genre = "Jazz",
+            year = 1999,
+            label = "Label Records",
+            composer = "Composer Name",
+        )
+
+        PartyPersonalQueueStash.stash(listOf(original), index = 0, positionMs = 0L, wasPlaying = false)
+        val restored = PartyPersonalQueueStash.load()!!.songs.single()
+
+        assertEquals(original.isrc, restored.isrc)
+        assertEquals(original.mbid, restored.mbid)
+        assertEquals(original.trackNumber, restored.trackNumber)
+        assertEquals(original.discNumber, restored.discNumber)
+        assertEquals(original.albumArtist, restored.albumArtist)
+        assertEquals(original.genre, restored.genre)
+        assertEquals(original.year, restored.year)
+        assertEquals(original.label, restored.label)
+        assertEquals(original.composer, restored.composer)
+    }
+
+    @Test
+    fun testIdentityNullsStayNull() {
+        val original = Song(
+            videoId = "identity-empty",
+            title = "Title",
+            artist = "Artist",
+            thumbnailUrl = null,
+        )
+
+        PartyPersonalQueueStash.stash(listOf(original), index = 0, positionMs = 0L, wasPlaying = false)
+        val restored = PartyPersonalQueueStash.load()!!.songs.single()
+
+        assertNull(restored.isrc)
+        assertNull(restored.mbid)
+        assertNull(restored.trackNumber)
+        assertNull(restored.discNumber)
+        assertNull(restored.albumArtist)
+        assertNull(restored.genre)
+        assertNull(restored.year)
+        assertNull(restored.label)
+        assertNull(restored.composer)
+    }
+
     private class FakeSharedPreferences : SharedPreferences {
         private val data = mutableMapOf<String, Any?>()
 

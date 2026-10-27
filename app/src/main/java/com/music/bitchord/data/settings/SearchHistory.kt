@@ -27,7 +27,10 @@ object SearchHistory {
     private const val MAX_ENTRIES = 20
 
     private lateinit var prefs: SharedPreferences
-    private val json = Json
+    // Fields added by a newer build must not make an older-shape list
+    // unreadable. This does not save a downgrade from a build without the flag,
+    // but it keeps future additions from breaking this reader.
+    private val json = Json { ignoreUnknownKeys = true }
     private val serializer = ListSerializer(SearchHistoryEntity.serializer())
     private val addonSerializer = ListSerializer(String.serializer())
 

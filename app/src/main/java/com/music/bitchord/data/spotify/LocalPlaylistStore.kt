@@ -44,17 +44,7 @@ object LocalPlaylistStore {
                 val songs = mutableListOf<Song>()
                 for (j in 0 until songsArray.length()) {
                     val sObj = songsArray.getJSONObject(j)
-                    val song = Song(
-                        videoId = sObj.optString("videoId", ""),
-                        title = sObj.optString("title", ""),
-                        artist = sObj.optString("artist", ""),
-                        thumbnailUrl = sObj.optString("thumbnailUrl", null).takeIf { !it.isNullOrBlank() && it != "null" },
-                        durationText = sObj.optString("durationText", null).takeIf { !it.isNullOrBlank() && it != "null" },
-                        artistId = sObj.optString("artistId", null).takeIf { !it.isNullOrBlank() && it != "null" },
-                        albumId = sObj.optString("albumId", null).takeIf { !it.isNullOrBlank() && it != "null" },
-                        albumName = sObj.optString("albumName", null).takeIf { !it.isNullOrBlank() && it != "null" },
-                        isVideo = sObj.optBoolean("isVideo", false),
-                    )
+                    val song = LocalPlaylistSongCodec.decode(sObj.toValueMap())
                     songs.add(song)
                 }
                 list.add(LocalPlaylist(id, title, songs))
@@ -105,15 +95,9 @@ object LocalPlaylistStore {
                 val songsArray = JSONArray()
                 for (song in playlist.songs) {
                     val sObj = JSONObject()
-                    sObj.put("videoId", song.videoId)
-                    sObj.put("title", song.title)
-                    sObj.put("artist", song.artist)
-                    sObj.put("thumbnailUrl", song.thumbnailUrl)
-                    sObj.put("durationText", song.durationText)
-                    sObj.put("artistId", song.artistId)
-                    sObj.put("albumId", song.albumId)
-                    sObj.put("albumName", song.albumName)
-                    sObj.put("isVideo", song.isVideo)
+                    for ((key, value) in LocalPlaylistSongCodec.encode(song)) {
+                        if (value != null) sObj.put(key, value)
+                    }
                     songsArray.put(sObj)
                 }
                 pObj.put("songs", songsArray)
@@ -122,4 +106,69 @@ object LocalPlaylistStore {
             prefs.edit().putString(KEY_PLAYLISTS, jsonArray.toString()).apply()
         }
     }
+}
+
+/** Keeps the manual JSON field list in one place, so persist and load cannot drift. */
+internal object LocalPlaylistSongCodec {
+
+    fun encode(song: Song): Map<String, Any?> = buildMap {
+        put("videoId", song.videoId)
+        put("title", song.title)
+        put("artist", song.artist)
+        song.thumbnailUrl?.let { put("thumbnailUrl", it) }
+        song.durationText?.let { put("durationText", it) }
+        song.artistId?.let { put("artistId", it) }
+        song.albumId?.let { put("albumId", it) }
+        song.albumName?.let { put("albumName", it) }
+        put("isVideo", song.isVideo)
+        song.isrc?.let { put("isrc", it) }
+        song.mbid?.let { put("mbid", it) }
+        song.trackNumber?.let { put("trackNumber", it) }
+        song.discNumber?.let { put("discNumber", it) }
+        song.albumArtist?.let { put("albumArtist", it) }
+        song.genre?.let { put("genre", it) }
+        song.year?.let { put("year", it) }
+        song.label?.let { put("label", it) }
+        song.composer?.let { put("composer", it) }
+    }
+
+    fun decode(values: Map<String, Any?>): Song = Song(
+        videoId = values.string("videoId") ?: "",
+        title = values.string("title") ?: "",
+        artist = values.string("artist") ?: "",
+        thumbnailUrl = values.string("thumbnailUrl"),
+        durationText = values.string("durationText"),
+        artistId = values.string("artistId"),
+        albumId = values.string("albumId"),
+        albumName = values.string("albumName"),
+        isVideo = values["isVideo"] as? Boolean ?: false,
+        isrc = values.string("isrc"),
+        mbid = values.string("mbid"),
+        trackNumber = values["trackNumber"] as? Int,
+        discNumber = values["discNumber"] as? Int,
+        albumArtist = values.string("albumArtist"),
+        genre = values.string("genre"),
+        year = values["year"] as? Int,
+        label = values.string("label"),
+        composer = values.string("composer"),
+    )
+
+    private fun Map<String, Any?>.string(key: String): String? =
+        (this[key] as? String)?.takeIf { it.isNotBlank() && it != "null" }
+}
+
+private fun JSONObject.toValueMap(): Map<String, Any?> {
+    val values = mutableMapOf<String, Any?>()
+    val keys = keys()
+    while (keys.hasNext()) {
+        val key = keys.next()
+        // optInt answers 0 for a missing key, and 0 is a real disc/track/year.
+        // Presence is the only thing that distinguishes it from "not recorded".
+        val value = when (key) {
+            "trackNumber", "discNumber", "year" -> if (has(key)) optInt(key) else null
+            else -> opt(key).takeUnless { it == JSONObject.NULL }
+        }
+        values[key] = value
+    }
+    return values
 }

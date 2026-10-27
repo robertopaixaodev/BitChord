@@ -595,6 +595,7 @@ object Downloads {
         // is both, and an album page's rows are neither.
         val album = fetched.albumName?.takeIf { it.isNotBlank() }
             ?: asked.albumName?.takeIf { it.isNotBlank() }
+        val identity = resolveSavedSongIdentity(asked, fetched)
         val metaAsked = SavedSongMetadata(
             videoId = asked.videoId,
             title = asked.title,
@@ -605,6 +606,15 @@ object Downloads {
             uri = uri.toString(),
             downloadFormat = downloadFormat,
             dateAddedSeconds = dateAddedSeconds,
+            isrc = identity.isrc,
+            mbid = identity.mbid,
+            trackNumber = identity.trackNumber,
+            discNumber = identity.discNumber,
+            albumArtist = identity.albumArtist,
+            genre = identity.genre,
+            year = identity.year,
+            label = identity.label,
+            composer = identity.composer,
         )
         val metaFetched = SavedSongMetadata(
             videoId = fetched.videoId,
@@ -616,6 +626,15 @@ object Downloads {
             uri = uri.toString(),
             downloadFormat = downloadFormat,
             dateAddedSeconds = dateAddedSeconds,
+            isrc = identity.isrc,
+            mbid = identity.mbid,
+            trackNumber = identity.trackNumber,
+            discNumber = identity.discNumber,
+            albumArtist = identity.albumArtist,
+            genre = identity.genre,
+            year = identity.year,
+            label = identity.label,
+            composer = identity.composer,
         )
         record(
             saved = { it + ids.associateWith { id -> uri.toString() } },
@@ -684,17 +703,12 @@ object Downloads {
                         migratedFormatByUri[meta.uri] = it
                     }
                 result.add(
-                    Song(
+                    meta.toDownloadedSong(
                         videoId = meta.videoId,
-                        title = meta.title,
-                        artist = meta.artist,
-                        thumbnailUrl = meta.thumbnailUrl,
-                        durationText = meta.durationText,
-                        albumName = meta.albumName,
                         localUri = meta.uri,
                         downloadFormat = downloadFormat,
-                        localDateAddedSeconds = dateAddedSeconds,
-                        localDateModifiedSeconds = dateModifiedSeconds,
+                        dateAddedSeconds = dateAddedSeconds,
+                        dateModifiedSeconds = dateModifiedSeconds,
                     )
                 )
             } else {
@@ -763,17 +777,12 @@ object Downloads {
                     persistedAddedSeconds = meta.dateAddedSeconds,
                     fileModifiedMillis = fileModifiedMillis,
                 )
-                Song(
+                meta.toDownloadedSong(
                     videoId = videoId,
-                    title = meta.title,
-                    artist = meta.artist,
-                    thumbnailUrl = meta.thumbnailUrl,
-                    durationText = meta.durationText,
-                    albumName = meta.albumName,
                     localUri = uriString,
                     downloadFormat = meta.downloadFormat ?: legacyYoutubeDownloadBadge(context, uri),
-                    localDateAddedSeconds = dateAddedSeconds,
-                    localDateModifiedSeconds = dateModifiedSeconds,
+                    dateAddedSeconds = dateAddedSeconds,
+                    dateModifiedSeconds = dateModifiedSeconds,
                 )
             }
         }
@@ -1389,6 +1398,38 @@ object Downloads {
     private const val KEY_SAVED = "downloaded_tracks"
 }
 
+/**
+ * Musical identity resolved from the two rows a download knows about.
+ *
+ * [fetched] is what was actually downloaded; [asked] is what the listener
+ * tapped, and for a music video those are different recordings. Prefer the
+ * fetched value and fall back to the asked one, then write the resolved value
+ * under both video ids so a later lookup by either alias sees it.
+ */
+internal data class SavedSongIdentity(
+    val isrc: String? = null,
+    val mbid: String? = null,
+    val trackNumber: Int? = null,
+    val discNumber: Int? = null,
+    val albumArtist: String? = null,
+    val genre: String? = null,
+    val year: Int? = null,
+    val label: String? = null,
+    val composer: String? = null,
+)
+
+internal fun resolveSavedSongIdentity(asked: Song, fetched: Song) = SavedSongIdentity(
+    isrc = fetched.isrc ?: asked.isrc,
+    mbid = fetched.mbid ?: asked.mbid,
+    trackNumber = fetched.trackNumber ?: asked.trackNumber,
+    discNumber = fetched.discNumber ?: asked.discNumber,
+    albumArtist = fetched.albumArtist ?: asked.albumArtist,
+    genre = fetched.genre ?: asked.genre,
+    year = fetched.year ?: asked.year,
+    label = fetched.label ?: asked.label,
+    composer = fetched.composer ?: asked.composer,
+)
+
 @kotlinx.serialization.Serializable
 internal data class SavedSongMetadata(
     val videoId: String,
@@ -1408,6 +1449,47 @@ internal data class SavedSongMetadata(
     val downloadFormat: String? = null,
     /** Stable creation time for downloads that MediaStore does not index. */
     val dateAddedSeconds: Long? = null,
+    val isrc: String? = null,
+    val mbid: String? = null,
+    val trackNumber: Int? = null,
+    val discNumber: Int? = null,
+    val albumArtist: String? = null,
+    val genre: String? = null,
+    val year: Int? = null,
+    val label: String? = null,
+    val composer: String? = null,
+)
+
+/**
+ * Rebuild the playable row from the recorded metadata. Both download readers
+ * share this so the two paths cannot drift on which identity fields survive.
+ */
+internal fun SavedSongMetadata.toDownloadedSong(
+    videoId: String = this.videoId,
+    localUri: String,
+    downloadFormat: String?,
+    dateAddedSeconds: Long?,
+    dateModifiedSeconds: Long?,
+) = Song(
+    videoId = videoId,
+    title = title,
+    artist = artist,
+    thumbnailUrl = thumbnailUrl,
+    durationText = durationText,
+    albumName = albumName,
+    localUri = localUri,
+    downloadFormat = downloadFormat,
+    localDateAddedSeconds = dateAddedSeconds,
+    localDateModifiedSeconds = dateModifiedSeconds,
+    isrc = isrc,
+    mbid = mbid,
+    trackNumber = trackNumber,
+    discNumber = discNumber,
+    albumArtist = albumArtist,
+    genre = genre,
+    year = year,
+    label = label,
+    composer = composer,
 )
 
 /**

@@ -115,6 +115,16 @@ object ListeningStats {
         writer.launch { synchronized(lock) { bucketFor(YearMonth.now()) } }
     }
 
+    /** Test-only dependency injection; production uses [init]. */
+    internal fun initForTesting(testDirectory: File) {
+        directory = testDirectory
+        open = null
+        dirty = false
+    }
+
+    /** Test-only flush that waits for the write, so a test can read it back. */
+    internal suspend fun flushForTesting() = flushAndAwait()
+
     private val ready: Boolean get() = this::directory.isInitialized
 
     // ── Writing ─────────────────────────────────────────────────────────────
@@ -146,6 +156,15 @@ object ListeningStats {
                     albumId = song.albumId,
                     artistId = song.artistId,
                     art = song.thumbnailUrl,
+                    isrc = song.isrc,
+                    mbid = song.mbid,
+                    trackNumber = song.trackNumber,
+                    discNumber = song.discNumber,
+                    albumArtist = song.albumArtist,
+                    genre = song.genre,
+                    year = song.year,
+                    label = song.label,
+                    composer = song.composer,
                 )
             }
             track.ms += playedMs
@@ -157,6 +176,15 @@ object ListeningStats {
             if (track.albumId == null) track.albumId = song.albumId
             if (track.artistId == null) track.artistId = song.artistId
             if (track.art == null) track.art = song.thumbnailUrl
+            if (track.isrc == null) track.isrc = song.isrc
+            if (track.mbid == null) track.mbid = song.mbid
+            if (track.trackNumber == null) track.trackNumber = song.trackNumber
+            if (track.discNumber == null) track.discNumber = song.discNumber
+            if (track.albumArtist == null) track.albumArtist = song.albumArtist
+            if (track.genre == null) track.genre = song.genre
+            if (track.year == null) track.year = song.year
+            if (track.label == null) track.label = song.label
+            if (track.composer == null) track.composer = song.composer
             if (countsAsPlay) track.plays++
 
             // Day-level sub-bucket for the track.
@@ -851,6 +879,15 @@ data class TrackEntry(
     var last: Long = 0L,
     /** Per-day breakdown for weekly queries. Key: "YYYY-MM-DD". */
     var days: MutableMap<String, DayStats> = mutableMapOf(),
+    var isrc: String? = null,
+    var mbid: String? = null,
+    var trackNumber: Int? = null,
+    var discNumber: Int? = null,
+    var albumArtist: String? = null,
+    var genre: String? = null,
+    var year: Int? = null,
+    var label: String? = null,
+    var composer: String? = null,
 ) {
     fun absorb(other: TrackEntry) {
         ms += other.ms
@@ -860,6 +897,18 @@ data class TrackEntry(
         if (albumId == null) albumId = other.albumId
         if (artistId == null) artistId = other.artistId
         if (art == null) art = other.art
+        // Identity is the same first-non-null rule as the fields above: an
+        // entry written before a field was known must not erase a value that
+        // another month already recorded.
+        if (isrc == null) isrc = other.isrc
+        if (mbid == null) mbid = other.mbid
+        if (trackNumber == null) trackNumber = other.trackNumber
+        if (discNumber == null) discNumber = other.discNumber
+        if (albumArtist == null) albumArtist = other.albumArtist
+        if (genre == null) genre = other.genre
+        if (year == null) year = other.year
+        if (label == null) label = other.label
+        if (composer == null) composer = other.composer
         // Merge per-day sub-buckets.
         if (other.days.isNotEmpty()) {
             other.days.forEach { (dateKey, stats) ->
