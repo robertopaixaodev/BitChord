@@ -37,6 +37,7 @@ import com.music.bitchord.data.settings.SearchHistory
 import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.data.stats.ArtistFacts
 import com.music.bitchord.data.stats.ListeningStats
+import com.music.bitchord.data.enrichment.EnrichmentRuntime
 import com.music.bitchord.download.Downloads
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -141,6 +142,9 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
         ListeningStats.init(this)
         // After AppSettings, whose switch decides whether half of it runs.
         ArtistFacts.init(this)
+        // Identity enrichment: its own cache file, and one service for the
+        // process so current + lookahead share the coalesced provider chain.
+        EnrichmentRuntime.init(this)
         // One cache directory can only be opened once per process, and
         // PlaybackService shares this one — so it's opened here, not there.
         AudioCache.init(this)

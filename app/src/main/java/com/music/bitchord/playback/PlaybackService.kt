@@ -15,6 +15,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.SystemClock
 import com.music.bitchord.data.TelemetryProvenance
+import com.music.bitchord.data.enrichment.EnrichmentRuntime
+import com.music.bitchord.data.enrichment.needsEnrichment
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.music.bitchord.playback.audio.usb.UsbDirectManager
@@ -3364,6 +3366,7 @@ class PlaybackService : MediaLibraryService() {
         alreadyAudible: Boolean = false,
     ) {
         val exoPlayer = player ?: return
+        if (mediaItem?.mediaId != null && mediaItem.mediaId == enrichingMediaId) return
         syncBoundedContextCursor(exoPlayer, mediaItem)
         if (boundedContextWindow != null && !ListenTogether.state.value.inParty) {
             saveBoundedContextSnapshot(exoPlayer)
@@ -3559,6 +3562,78 @@ class PlaybackService : MediaLibraryService() {
         publishWidgetState()
         loadLyricsForCurrentTrack()
         if (exoPlayer.isPlaying) startLyricsTicker()
+        enrichQueueAround(exoPlayer)
+    }
+
+    /**
+     * Ask the enrichment service for the current track and the next few rows.
+     *
+     * The service coalesces by videoId, the cache stops a repeat after the
+     * first answer, and the content guard here stops a queue rebuild from
+     * asking again for a row that already carries any identity field.
+     */
+    private fun enrichQueueAround(exoPlayer: ExoPlayer) {
+        val service = EnrichmentRuntime.serviceOrNull ?: return
+        val count = exoPlayer.mediaItemCount
+        val currentIndex = exoPlayer.currentMediaItemIndex
+        val window = enrichmentWindow(currentIndex, count, ENRICHMENT_LOOKAHEAD)
+        if (window.isEmpty()) return
+        for (index in window) {
+            val song = exoPlayer.getMediaItemAt(index).toSong()
+            if (!song.needsEnrichment()) continue
+            service.enrichInBackground(song) { enriched ->
+                if (enriched == null) return@enrichInBackground
+                scope.launch(Dispatchers.Main) {
+                    applyEnrichedSong(enriched)
+                }
+            }
+        }
+    }
+
+    /**
+     * Apply one completed enrichment. The lookup is by queueEntryId, so a
+     * result that arrived after the listener skipped still lands on the row it
+     * belongs to (even if that row is now history), and a row that left the
+     * queue is simply not found.
+     */
+    private fun applyEnrichedSong(enriched: Song) {
+        val exoPlayer = player ?: return
+        val updater = EnrichmentQueueUpdater(
+            player = exoPlayer,
+            isSwapping = { swappingMediaId != null || enrichingMediaId != null },
+        )
+        val currentIndex = exoPlayer.currentMediaItemIndex
+        val currentItem = exoPlayer.currentMediaItem
+        val currentMatches = if (enriched.queueEntryId != null) {
+            currentItem?.queueEntryId == enriched.queueEntryId
+        } else {
+            currentItem?.mediaId == enriched.videoId
+        }
+        val targetIndex = enriched.queueEntryId?.let { entryId ->
+            (0 until exoPlayer.mediaItemCount).firstOrNull {
+                exoPlayer.getMediaItemAt(it).queueEntryId == entryId
+            }
+        }
+        if (targetIndex == null) {
+            if (currentMatches && currentIndex in 0 until exoPlayer.mediaItemCount) {
+                enrichingMediaId = currentItem?.mediaId
+                try {
+                    updater.tryUpdateItemAt(currentIndex, enriched)
+                } finally {
+                    enrichingMediaId = null
+                }
+            } else {
+                updater.updateCurrentAndNext(enriched, lookahead = ENRICHMENT_LOOKAHEAD)
+            }
+            return
+        }
+        val isCurrent = targetIndex == currentIndex
+        if (isCurrent) enrichingMediaId = exoPlayer.getMediaItemAt(targetIndex).mediaId
+        try {
+            updater.tryUpdateItemAt(targetIndex, enriched)
+        } finally {
+            if (isCurrent) enrichingMediaId = null
+        }
     }
 
     /** The background hunt for a better copy of whatever is playing. */
@@ -4208,6 +4283,13 @@ class PlaybackService : MediaLibraryService() {
      * queue actually moving on. Cleared by the transition it describes.
      */
     private var swappingMediaId: String? = null
+
+    /**
+     * The item this service is replacing only to add enrichment metadata.
+     * [onTrackBecameCurrent] returns early for it, so the replacement cannot
+     * start a second enrichment pass; the content guard is the second belt.
+     */
+    private var enrichingMediaId: String? = null
 
     /**
      * When the audio was last cut for a quality swap, so the analytics listener
@@ -8714,6 +8796,8 @@ class PlaybackService : MediaLibraryService() {
         const val MEDIA_PLAYLISTS_ID = "playlists"
         const val MEDIA_MORE_ID = "more"
         const val MEDIA_LIKED_ID = "liked"
+        /** Current row plus this many ahead are offered to enrichment. */
+        const val ENRICHMENT_LOOKAHEAD = 8
         /** See [scheduleForeignCachePurge]: comfortably past the longest crossfade. */
         const val FOREIGN_CACHE_PURGE_DELAY_MS = 30_000L
         /** How many upcoming tracks [scheduleForeignCachePurge] leaves alone for read-ahead and Automix. */

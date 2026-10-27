@@ -51,6 +51,16 @@ internal fun Song.hasCompleteIdentity(): Boolean =
         albumArtist != null && genre != null && year != null &&
         label != null && composer != null
 
+/** True when at least one of the nine enrichment fields is already known. */
+internal fun Song.hasAnyIdentity(): Boolean =
+    isrc != null || mbid != null || trackNumber != null || discNumber != null ||
+        albumArtist != null || genre != null || year != null ||
+        label != null || composer != null
+
+/** The hook's content guard: a row with any identity, or no id, is left alone. */
+internal fun Song.needsEnrichment(): Boolean =
+    videoId.isNotBlank() && !hasAnyIdentity()
+
 /**
  * Provider search hits are loose. Title and artist are compared after removing
  * punctuation and case, and one side may contain the other: catalogues append

@@ -1,0 +1,187 @@
+package com.music.bitchord.playback
+
+import android.os.Bundle
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import com.music.bitchord.data.model.Song
+import java.util.Locale
+
+/**
+ * One queue row, in the terms the updater decides on. Kept separate from
+ * [MediaItem] so the decision table can be tested on the JVM, where Bundle is
+ * a stub and extras cannot be read back.
+ */
+internal data class EnrichmentQueueItem(
+    val index: Int,
+    val mediaId: String,
+    val queueEntryId: String?,
+    val uri: String?,
+)
+
+/**
+ * Applies one enriched [Song] to the current row and the rows just ahead of it.
+ *
+ * Future rows are metadata-only replacements and are never playing, so they do
+ * not need playback guards. The current row is only replaced when its source is
+ * a progressive file and no quality swap is in flight: Media3 reuses a
+ * ProgressiveMediaSource when only the metadata changed, but that guarantee
+ * does not extend to HLS/DASH or to a source being replaced by QualityUpgrade.
+ *
+ * Nothing here calls prepare() or seekTo(). The item's URI, media id and queue
+ * entry id are unchanged; only the nine identity extras are added.
+ */
+class EnrichmentQueueUpdater(
+    private val player: Player,
+    private val isSwapping: () -> Boolean = { false },
+) {
+
+    fun updateCurrentAndNext(enriched: Song, lookahead: Int = 8): Int {
+        if (enriched.videoId.isBlank()) return 0
+        val count = player.mediaItemCount
+        val currentIndex = player.currentMediaItemIndex
+        val window = enrichmentWindow(currentIndex, count, lookahead)
+        if (window.isEmpty()) return 0
+        val items = window.map { index ->
+            val item = player.getMediaItemAt(index)
+            EnrichmentQueueItem(
+                index = index,
+                mediaId = item.mediaId,
+                queueEntryId = item.queueEntryId,
+                uri = item.localConfiguration?.uri?.toString(),
+            )
+        }
+        val targets = planEnrichmentTargets(
+            currentIndex = 0,
+            items = items,
+            enriched = enriched,
+            lookahead = lookahead,
+            isSwapping = isSwapping(),
+        )
+        var updated = 0
+        for (index in targets) {
+            if (tryUpdateItemAt(index, enriched)) updated++
+        }
+        return updated
+    }
+
+    fun tryUpdateItemAt(index: Int, enriched: Song): Boolean {
+        if (enriched.videoId.isBlank()) return false
+        val count = player.mediaItemCount
+        if (index !in 0 until count) return false
+        val item = player.getMediaItemAt(index)
+        if (!matches(item.mediaId, item.queueEntryId, enriched)) return false
+        val updatedItem = item.withIdentity(enriched)
+        if (index == player.currentMediaItemIndex &&
+            !canReplaceCurrent(item, updatedItem, enriched)
+        ) {
+            return false
+        }
+        player.replaceMediaItem(index, updatedItem)
+        return true
+    }
+
+    private fun matches(mediaId: String, queueEntryId: String?, enriched: Song): Boolean =
+        if (enriched.queueEntryId != null) {
+            queueEntryId == enriched.queueEntryId
+        } else {
+            mediaId == enriched.videoId
+        }
+
+    private fun canReplaceCurrent(
+        item: MediaItem,
+        updatedItem: MediaItem,
+        enriched: Song,
+    ): Boolean {
+        if (isSwapping()) return false
+        if (item.mediaId != enriched.videoId) return false
+        if (item.queueEntryId != enriched.queueEntryId) return false
+        if (item.localConfiguration?.uri != updatedItem.localConfiguration?.uri) return false
+        val uri = item.localConfiguration?.uri?.toString() ?: return false
+        return isProgressiveUri(uri)
+    }
+}
+
+/**
+ * The decision half of [EnrichmentQueueUpdater]. `currentIndex` is an index
+ * into [items], not an absolute player index; the returned values are
+ * [EnrichmentQueueItem.index] values, ready for replaceMediaItem.
+ */
+internal fun planEnrichmentTargets(
+    currentIndex: Int,
+    items: List<EnrichmentQueueItem>,
+    enriched: Song,
+    lookahead: Int,
+    isSwapping: Boolean,
+): List<Int> {
+    if (currentIndex !in items.indices) return emptyList()
+    val end = minOf(currentIndex + lookahead.coerceAtLeast(0), items.lastIndex)
+    val targets = mutableListOf<Int>()
+    for (relative in currentIndex..end) {
+        val item = items[relative]
+        val matches = if (enriched.queueEntryId != null) {
+            item.queueEntryId == enriched.queueEntryId
+        } else {
+            item.mediaId == enriched.videoId
+        }
+        if (!matches) continue
+        if (relative == currentIndex) {
+            if (isSwapping) continue
+            if (item.mediaId != enriched.videoId) continue
+            if (item.queueEntryId != enriched.queueEntryId) continue
+            val uri = item.uri ?: continue
+            if (!isProgressiveUri(uri)) continue
+        }
+        targets += item.index
+    }
+    return targets
+}
+
+internal fun isProgressiveUri(uri: String): Boolean {
+    val path = uri.substringBefore('?').substringBefore('#')
+    val extension = path.substringAfterLast('/', path)
+        .substringAfterLast('.', "")
+        .lowercase(Locale.ROOT)
+    return extension in PROGRESSIVE_EXTENSIONS
+}
+
+/** The current row plus at most [lookahead] ahead; empty when the queue is gone. */
+internal fun enrichmentWindow(
+    currentIndex: Int,
+    itemCount: Int,
+    lookahead: Int,
+): IntRange {
+    if (currentIndex !in 0 until itemCount) return IntRange.EMPTY
+    val end = minOf(currentIndex + lookahead.coerceAtLeast(0), itemCount - 1)
+    return currentIndex..end
+}
+
+private val PROGRESSIVE_EXTENSIONS =
+    setOf("mp3", "flac", "m4a", "ogg", "opus", "wav", "aac")
+
+// These must match PlayerConnection's extras keys. They are duplicated here
+// rather than widening Onda 1's private constants; the round-trip test through
+// MediaItem.toSong() keeps them honest on a device.
+private const val EXTRA_ISRC = "bitchord.isrc"
+private const val EXTRA_MBID = "bitchord.mbid"
+private const val EXTRA_TRACK_NUMBER = "bitchord.trackNumber"
+private const val EXTRA_DISC_NUMBER = "bitchord.discNumber"
+private const val EXTRA_ALBUM_ARTIST = "bitchord.albumArtist"
+private const val EXTRA_GENRE = "bitchord.genre"
+private const val EXTRA_YEAR = "bitchord.year"
+private const val EXTRA_LABEL = "bitchord.label"
+private const val EXTRA_COMPOSER = "bitchord.composer"
+
+private fun MediaItem.withIdentity(enriched: Song): MediaItem {
+    val extras = Bundle(mediaMetadata.extras ?: Bundle())
+    enriched.isrc?.let { extras.putString(EXTRA_ISRC, it) }
+    enriched.mbid?.let { extras.putString(EXTRA_MBID, it) }
+    enriched.trackNumber?.let { extras.putInt(EXTRA_TRACK_NUMBER, it) }
+    enriched.discNumber?.let { extras.putInt(EXTRA_DISC_NUMBER, it) }
+    enriched.albumArtist?.let { extras.putString(EXTRA_ALBUM_ARTIST, it) }
+    enriched.genre?.let { extras.putString(EXTRA_GENRE, it) }
+    enriched.year?.let { extras.putInt(EXTRA_YEAR, it) }
+    enriched.label?.let { extras.putString(EXTRA_LABEL, it) }
+    enriched.composer?.let { extras.putString(EXTRA_COMPOSER, it) }
+    val metadata = mediaMetadata.buildUpon().setExtras(extras).build()
+    return buildUpon().setMediaMetadata(metadata).build()
+}

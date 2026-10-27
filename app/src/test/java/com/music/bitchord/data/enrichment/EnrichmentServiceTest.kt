@@ -1,6 +1,10 @@
 package com.music.bitchord.data.enrichment
 
 import com.music.bitchord.data.model.Song
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -192,5 +196,49 @@ class EnrichmentServiceTest {
 
         assertNull(result)
         assertEquals(0, provider.calls)
+    }
+
+    @Test
+    fun `concurrent calls share one provider chain`() = runBlocking {
+        val cache = cache()
+        val started = CompletableDeferred<Unit>()
+        val gate = CompletableDeferred<Unit>()
+        var calls = 0
+        val provider = object : EnrichmentProvider {
+            override val name: String = "fake"
+
+            override suspend fun enrich(song: Song): PartialEnrichment? {
+                calls++
+                started.complete(Unit)
+                gate.await()
+                return PartialEnrichment(isrc = "USRC17607839", provider = name)
+            }
+        }
+        val service = EnrichmentService(cache, listOf(provider))
+
+        val first = async { service.enrich(song()) }
+        started.await()
+        val second = async { service.enrich(song()) }
+        delay(50)
+        gate.complete(Unit)
+        val results = awaitAll(first, second)
+
+        assertEquals(1, calls)
+        assertTrue(results.all { it?.isrc == "USRC17607839" })
+    }
+
+    @Test
+    fun `a second sequential call uses the cache`() = runBlocking {
+        val cache = cache()
+        val provider = FakeProvider(
+            name = "itunes",
+            result = PartialEnrichment(genre = "Rock", provider = "itunes"),
+        )
+        val service = EnrichmentService(cache, listOf(provider))
+
+        assertEquals("Rock", service.enrich(song())?.genre)
+        assertEquals("Rock", service.enrich(song())?.genre)
+
+        assertEquals(1, provider.calls)
     }
 }
