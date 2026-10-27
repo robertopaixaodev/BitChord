@@ -479,15 +479,15 @@ fun MediaItem.toSong() = Song(
     playbackSourceId = mediaMetadata.extras?.getString(EXTRA_PLAYBACK_SOURCE_ID),
     localUri = mediaMetadata.extras?.getString(EXTRA_LOCAL_URI),
     localPath = mediaMetadata.extras?.getString(EXTRA_LOCAL_PATH),
-    isrc = mediaMetadata.extras?.getString(EXTRA_ISRC),
-    mbid = mediaMetadata.extras?.getString(EXTRA_MBID),
-    discNumber = mediaMetadata.extras?.getNullableInt(EXTRA_DISC_NUMBER),
-    albumArtist = mediaMetadata.extras?.getString(EXTRA_ALBUM_ARTIST),
-    genre = mediaMetadata.extras?.getString(EXTRA_GENRE),
-    year = mediaMetadata.extras?.getNullableInt(EXTRA_YEAR),
-    label = mediaMetadata.extras?.getString(EXTRA_LABEL),
-    composer = mediaMetadata.extras?.getString(EXTRA_COMPOSER),
-    trackNumber = mediaMetadata.extras?.getNullableInt(EXTRA_TRACK_NUMBER),
+    isrc = mediaMetadata.extras?.getString(SongExtraKeys.ISRC),
+    mbid = mediaMetadata.extras?.getString(SongExtraKeys.MBID),
+    discNumber = mediaMetadata.extras?.getNullableInt(SongExtraKeys.DISC_NUMBER),
+    albumArtist = mediaMetadata.extras?.getString(SongExtraKeys.ALBUM_ARTIST),
+    genre = mediaMetadata.extras?.getString(SongExtraKeys.GENRE),
+    year = mediaMetadata.extras?.getNullableInt(SongExtraKeys.YEAR),
+    label = mediaMetadata.extras?.getString(SongExtraKeys.LABEL),
+    composer = mediaMetadata.extras?.getString(SongExtraKeys.COMPOSER),
+    trackNumber = mediaMetadata.extras?.getNullableInt(SongExtraKeys.TRACK_NUMBER),
 )
 
 internal val mediaItemTiers = java.util.Collections.synchronizedMap(java.util.WeakHashMap<MediaItem, QueueTier>())
@@ -592,22 +592,10 @@ private const val EXTRA_SOURCE_HI_RES = "bitchord.sourceHiRes"
 private const val EXTRA_IS_VIDEO = "bitchord.isVideo"
 private const val EXTRA_VIDEO_ORIGIN = "bitchord.isVideoOrigin"
 
-/**
- * Musical identity and release credits carried alongside the queue row.
- *
- * These are attributes, not identity: [EXTRA_QUEUE_ENTRY_ID] and the item's
- * media id remain the only keys. Null means the source did not say, and a
- * missing key is how that survives the round trip.
- */
-private const val EXTRA_ISRC = "bitchord.isrc"
-private const val EXTRA_MBID = "bitchord.mbid"
-private const val EXTRA_TRACK_NUMBER = "bitchord.trackNumber"
-private const val EXTRA_DISC_NUMBER = "bitchord.discNumber"
-private const val EXTRA_ALBUM_ARTIST = "bitchord.albumArtist"
-private const val EXTRA_GENRE = "bitchord.genre"
-private const val EXTRA_YEAR = "bitchord.year"
-private const val EXTRA_LABEL = "bitchord.label"
-private const val EXTRA_COMPOSER = "bitchord.composer"
+// Musical identity and release credits carried alongside the queue row. These
+// are attributes, not identity: queueEntryId and the item's media id remain the
+// only keys. The keys live in SongExtraKeys, shared with EnrichmentQueueUpdater
+// so the two cannot drift.
 
 /**
  * Bundle has no nullable int, and a sentinel would turn "the source did not
@@ -825,16 +813,16 @@ fun Song.toMediaItem(): MediaItem {
                             EXTRA_VIDEO_ORIGIN to isVideoOrigin,
                             EXTRA_SOURCE_QUALITY to sourceQuality,
                             EXTRA_SOURCE_HI_RES to sourceHiRes,
-                            EXTRA_ISRC to isrc,
-                            EXTRA_MBID to mbid,
-                            EXTRA_ALBUM_ARTIST to albumArtist,
-                            EXTRA_GENRE to genre,
-                            EXTRA_LABEL to label,
-                            EXTRA_COMPOSER to composer,
+                            SongExtraKeys.ISRC to isrc,
+                            SongExtraKeys.MBID to mbid,
+                            SongExtraKeys.ALBUM_ARTIST to albumArtist,
+                            SongExtraKeys.GENRE to genre,
+                            SongExtraKeys.LABEL to label,
+                            SongExtraKeys.COMPOSER to composer,
                         ).apply {
-                            putNullableInt(EXTRA_TRACK_NUMBER, trackNumber)
-                            putNullableInt(EXTRA_DISC_NUMBER, discNumber)
-                            putNullableInt(EXTRA_YEAR, year)
+                            putNullableInt(SongExtraKeys.TRACK_NUMBER, trackNumber)
+                            putNullableInt(SongExtraKeys.DISC_NUMBER, discNumber)
+                            putNullableInt(SongExtraKeys.YEAR, year)
                         },
                     )
                 }

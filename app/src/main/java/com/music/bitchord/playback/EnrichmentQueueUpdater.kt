@@ -158,30 +158,17 @@ internal fun enrichmentWindow(
 private val PROGRESSIVE_EXTENSIONS =
     setOf("mp3", "flac", "m4a", "ogg", "opus", "wav", "aac")
 
-// These must match PlayerConnection's extras keys. They are duplicated here
-// rather than widening Onda 1's private constants; the round-trip test through
-// MediaItem.toSong() keeps them honest on a device.
-private const val EXTRA_ISRC = "bitchord.isrc"
-private const val EXTRA_MBID = "bitchord.mbid"
-private const val EXTRA_TRACK_NUMBER = "bitchord.trackNumber"
-private const val EXTRA_DISC_NUMBER = "bitchord.discNumber"
-private const val EXTRA_ALBUM_ARTIST = "bitchord.albumArtist"
-private const val EXTRA_GENRE = "bitchord.genre"
-private const val EXTRA_YEAR = "bitchord.year"
-private const val EXTRA_LABEL = "bitchord.label"
-private const val EXTRA_COMPOSER = "bitchord.composer"
-
 private fun MediaItem.withIdentity(enriched: Song): MediaItem {
     val extras = Bundle(mediaMetadata.extras ?: Bundle())
-    enriched.isrc?.let { extras.putString(EXTRA_ISRC, it) }
-    enriched.mbid?.let { extras.putString(EXTRA_MBID, it) }
-    enriched.trackNumber?.let { extras.putInt(EXTRA_TRACK_NUMBER, it) }
-    enriched.discNumber?.let { extras.putInt(EXTRA_DISC_NUMBER, it) }
-    enriched.albumArtist?.let { extras.putString(EXTRA_ALBUM_ARTIST, it) }
-    enriched.genre?.let { extras.putString(EXTRA_GENRE, it) }
-    enriched.year?.let { extras.putInt(EXTRA_YEAR, it) }
-    enriched.label?.let { extras.putString(EXTRA_LABEL, it) }
-    enriched.composer?.let { extras.putString(EXTRA_COMPOSER, it) }
+    enriched.isrc?.let { extras.putString(SongExtraKeys.ISRC, it) }
+    enriched.mbid?.let { extras.putString(SongExtraKeys.MBID, it) }
+    enriched.trackNumber?.let { extras.putInt(SongExtraKeys.TRACK_NUMBER, it) }
+    enriched.discNumber?.let { extras.putInt(SongExtraKeys.DISC_NUMBER, it) }
+    enriched.albumArtist?.let { extras.putString(SongExtraKeys.ALBUM_ARTIST, it) }
+    enriched.genre?.let { extras.putString(SongExtraKeys.GENRE, it) }
+    enriched.year?.let { extras.putInt(SongExtraKeys.YEAR, it) }
+    enriched.label?.let { extras.putString(SongExtraKeys.LABEL, it) }
+    enriched.composer?.let { extras.putString(SongExtraKeys.COMPOSER, it) }
     val metadata = mediaMetadata.buildUpon().setExtras(extras).build()
     return buildUpon().setMediaMetadata(metadata).build()
 }
