@@ -652,7 +652,10 @@
     <string name="signed_in_as">Signed in as %1$s</string>
     <string name="signing_in">Signing in…</string>
     <string name="sleep_timer">Sleep timer</string>
-    <string name="sources_no_lossless">No enabled source can provide lossless audio. Add an addon to play lossless files without transcoding.</string>
+    <string name="sources_no_lossless">Sources such as Navidrome and WebDAV can provide lossless audio (FLAC) natively.</string>
+    <string name="source_badge_lossless">Lossless</string>
+    <string name="home_recently_added">Recently added</string>
+    <string name="home_navidrome_shelf">From your Navidrome library</string>
     <string name="sources_order_footer">If a source does not have a track or cannot be reached, BitChord tries the next one. Sources above YouTube can replace its recording when they return a better version.</string>
     <string name="sources_order_header">Sources, tried in this order</string>
     <string name="sources_quality_capped">This connection is set below High quality, so streams are transcoded to fit that limit. Downloads are unaffected.</string>

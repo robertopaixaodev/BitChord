@@ -1371,4 +1371,7 @@
     <string name="song_info_unavailable">Nicht verfügbar</string>
     <string name="song_info_error">Einige Informationen konnten nicht geladen werden.</string>
     <string name="song_info_retry">Erneut versuchen</string>
+    <string name="source_badge_lossless">Lossless</string>
+    <string name="home_recently_added">Recently added</string>
+    <string name="home_navidrome_shelf">From your Navidrome library</string>
 </resources>

@@ -1372,4 +1372,7 @@
     <string name="song_info_unavailable">Non disponible</string>
     <string name="song_info_error">Certaines informations n’ont pas pu être chargées.</string>
     <string name="song_info_retry">Réessayer</string>
+    <string name="source_badge_lossless">Lossless</string>
+    <string name="home_recently_added">Recently added</string>
+    <string name="home_navidrome_shelf">From your Navidrome library</string>
 </resources>

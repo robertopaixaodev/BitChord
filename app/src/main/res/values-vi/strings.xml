@@ -1288,4 +1288,7 @@
     <string name="song_info_unavailable">Không có thông tin</string>
     <string name="song_info_error">Không thể tải một số thông tin.</string>
     <string name="song_info_retry">Thử lại</string>
+    <string name="source_badge_lossless">Lossless</string>
+    <string name="home_recently_added">Recently added</string>
+    <string name="home_navidrome_shelf">From your Navidrome library</string>
 </resources>

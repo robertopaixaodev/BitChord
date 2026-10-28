@@ -61,6 +61,23 @@ private data class NavidromeSearchResult(
 )
 
 @Serializable
+internal data class NavidromeAlbum(
+    val id: String = "",
+    val name: String = "",
+    val artist: String? = null,
+    @SerialName("artistId") val artistId: String? = null,
+    @SerialName("coverArt") val coverArt: String? = null,
+    @SerialName("songCount") val songCount: Int? = null,
+    val year: Int? = null,
+    val created: String? = null,
+)
+
+@Serializable
+private data class NavidromeAlbumList(
+    val album: List<NavidromeAlbum> = emptyList(),
+)
+
+@Serializable
 private data class NavidromeError(
     val code: Int? = null,
     val message: String? = null,
@@ -72,6 +89,7 @@ private data class NavidromeBody(
     val version: String? = null,
     val error: NavidromeError? = null,
     @SerialName("searchResult3") val searchResult: NavidromeSearchResult? = null,
+    @SerialName("albumList2") val albumList: NavidromeAlbumList? = null,
 )
 
 @Serializable
@@ -131,6 +149,19 @@ class NavidromeClient(
                 ),
             )
             body.searchResult?.song.orEmpty().take(limit)
+        }
+
+    internal suspend fun recentAlbums(limit: Int): List<NavidromeAlbum> =
+        withContext(Dispatchers.IO) {
+            if (limit <= 0) return@withContext emptyList()
+            val body = get(
+                "getAlbumList2.view",
+                listOf(
+                    "type" to "newest",
+                    "size" to limit.toString(),
+                ),
+            )
+            body.albumList?.album.orEmpty().take(limit)
         }
 
     fun streamUrl(songId: String, request: StreamRequest): String {

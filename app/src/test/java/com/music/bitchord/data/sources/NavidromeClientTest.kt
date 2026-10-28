@@ -89,6 +89,37 @@ class NavidromeClientTest {
     }
 
     @Test
+    fun `album list asks for newest and parses rows`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok","version":"1.16.1",
+                      "albumList2":{"album":[
+                        {"id":"album-1","name":"Newest","artist":"Artist",
+                         "coverArt":"cover-1","songCount":9,"year":2024},
+                        {"id":"album-2","name":"Older","artist":"Other","year":1999}
+                      ]}}}
+                    """.trimIndent(),
+                ),
+            )
+            val client = NavidromeClient(config(server))
+
+            val albums = client.recentAlbums(10)
+
+            assertEquals(listOf("album-1", "album-2"), albums.map { it.id })
+            assertEquals("Newest", albums.first().name)
+            assertEquals("Artist", albums.first().artist)
+            assertEquals(9, albums.first().songCount)
+            val url = server.takeRequest().requestUrl!!
+            assertEquals("/rest/getAlbumList2.view", url.encodedPath)
+            assertEquals("newest", url.queryParameter("type"))
+            assertEquals("10", url.queryParameter("size"))
+        }
+    }
+
+    @Test
     fun `stream URL keeps the song id and asks for raw lossless`() {
         MockWebServer().use { server ->
             server.start()

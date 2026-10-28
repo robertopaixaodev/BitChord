@@ -115,6 +115,13 @@ data class Song(
      */
     val sourceQuality: String? = null,
     /**
+     * Which kind of catalogue this row came from, when it did not come from
+     * YouTube. Carried so a list that mixes sources can mark the row — the
+     * search results draw a small server badge for a Navidrome row — without
+     * every surface having to parse the synthetic track key.
+     */
+    val sourceOrigin: SongOrigin? = null,
+    /**
      * Whether a `LOSSLESS` [sourceQuality] row said it was the hi-res tier
      * (`HI_RES_LOSSLESS`, `hires-96`, `24-bit`). Display only — the resolver
      * ranks on [sourceQuality], where 16-bit and 24-bit are one tier.
@@ -185,6 +192,7 @@ data class Song(
         localDateModifiedSeconds: Long? = null,
         trackNumber: Int? = null,
         sourceQuality: String? = null,
+        sourceOrigin: SongOrigin? = null,
         isExplicit: Boolean? = null,
         playbackSource: String? = null,
         playbackSourceType: PlaybackSourceType? = null,
@@ -220,6 +228,7 @@ data class Song(
         localDateModifiedSeconds = localDateModifiedSeconds,
         trackNumber = trackNumber,
         sourceQuality = sourceQuality,
+        sourceOrigin = sourceOrigin,
         isExplicit = isExplicit,
         playbackSource = playbackSource,
         playbackSourceType = playbackSourceType,
@@ -391,6 +400,15 @@ const val NOTIFICATION_ART_PX = 544
 const val PLAYER_ART_PX = 1200
 
 enum class BrowseType { ALBUM, ARTIST, PLAYLIST, OTHER }
+
+/**
+ * A non-YouTube catalogue a row came from.
+ *
+ * Separate from the app's `SourceKind`, which is a registry concern and lives in
+ * the Android module; this enum is the small part the shared UI needs in order
+ * to mark a row without knowing how sources are configured.
+ */
+enum class SongOrigin { NAVIDROME }
 
 /** A queue-level origin shown above Now Playing, in the style of Spotify. */
 enum class PlaybackSourceType {

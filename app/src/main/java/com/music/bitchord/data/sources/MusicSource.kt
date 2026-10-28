@@ -75,6 +75,23 @@ sealed interface StreamRequest {
 }
 
 /**
+ * One release a source can name, for surfaces that show a library's own
+ * collection rather than a track list.
+ *
+ * Deliberately smaller than [com.music.bitchord.data.model.BrowseItem]: this is
+ * what a server-side library knows about an album, not a YouTube browse page.
+ * Only [id] is the source's own key; the rest is display data.
+ */
+data class Album(
+    val id: String,
+    val title: String,
+    val artist: String? = null,
+    val thumbnailUrl: String? = null,
+    val year: Int? = null,
+    val songCount: Int? = null,
+)
+
+/**
  * Whether a source is reachable and usable, asked before it is trusted with a
  * track.
  *
@@ -146,6 +163,16 @@ interface MusicSource {
         waitForAll: Boolean = false,
         request: StreamRequest? = null,
     ): List<Song>
+
+    /**
+     * The newest albums this source holds, newest first.
+     *
+     * Optional: YouTube keeps its home feed in [YtMusicRepository][com.music.bitchord.data.YtMusicRepository]
+     * and has no album list to answer here, and a catalog that only answers
+     * track searches simply has nothing to offer. A library server is the case
+     * this exists for — see [NavidromeSource].
+     */
+    suspend fun getRecentAlbums(limit: Int = 30): List<Album> = emptyList()
 
     /**
      * @param trackId this source's own id for the track, as issued by [search].

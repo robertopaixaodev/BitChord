@@ -4,6 +4,7 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import com.music.bitchord.data.model.SongOrigin
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test
@@ -52,7 +53,38 @@ class NavidromeSourceTest {
             assertEquals("USRC17607839", song.isrc)
             assertEquals("mbid-1", song.mbid)
             assertEquals("LOSSLESS", song.sourceQuality)
+            assertEquals(SongOrigin.NAVIDROME, song.sourceOrigin)
             assertNotNull(song.thumbnailUrl)
+        }
+    }
+
+    @Test
+    fun `recent albums map to Album rows with cover urls`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok","version":"1.16.1",
+                      "albumList2":{"album":[
+                        {"id":"album-1","name":"Newest","artist":"Artist",
+                         "coverArt":"cover-1","songCount":9,"year":2024}
+                      ]}}}
+                    """.trimIndent(),
+                ),
+            )
+            val config = config(server)
+            val source = NavidromeSource(config.configId, config)
+
+            val albums = source.getRecentAlbums(10)
+
+            val album = albums.single()
+            assertEquals("album-1", album.id)
+            assertEquals("Newest", album.title)
+            assertEquals("Artist", album.artist)
+            assertEquals(2024, album.year)
+            assertEquals(9, album.songCount)
+            assertNotNull(album.thumbnailUrl)
         }
     }
 

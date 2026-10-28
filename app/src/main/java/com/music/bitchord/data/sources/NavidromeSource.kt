@@ -1,8 +1,8 @@
 package com.music.bitchord.data.sources
 
-import android.util.Log
 import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.model.SongOrigin
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -45,7 +45,6 @@ class NavidromeSource(
         waitForAll: Boolean,
         request: StreamRequest?,
     ): List<Song> = withContext(Dispatchers.IO) {
-        Log.d("NavidromeDebug", "Iniciando busca no Navidrome para: $query")
         if (query.isBlank() || limit <= 0) return@withContext emptyList()
         try {
             client.searchSongs(query, limit).take(limit).map { row ->
@@ -56,6 +55,27 @@ class NavidromeSource(
             throw e
         } catch (e: Exception) {
             TrackLog.w(TAG, "Navidrome search failed for '$query': ${e.message}")
+            emptyList()
+        }
+    }
+
+    override suspend fun getRecentAlbums(limit: Int): List<Album> = withContext(Dispatchers.IO) {
+        if (limit <= 0) return@withContext emptyList()
+        try {
+            client.recentAlbums(limit).take(limit).map { row ->
+                Album(
+                    id = row.id,
+                    title = row.name.ifBlank { "Unknown Album" },
+                    artist = row.artist?.takeIf { it.isNotBlank() },
+                    thumbnailUrl = row.coverArt?.let(client::coverUrl),
+                    year = row.year,
+                    songCount = row.songCount,
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            TrackLog.w(TAG, "Navidrome album list failed: ${e.message}")
             emptyList()
         }
     }
@@ -94,6 +114,7 @@ class NavidromeSource(
             isrc = isrc?.takeIf { it.isNotBlank() },
             mbid = musicBrainzId?.takeIf { it.isNotBlank() },
             sourceQuality = if (lossless) "LOSSLESS" else "HIGH",
+            sourceOrigin = SongOrigin.NAVIDROME,
         )
     }
 

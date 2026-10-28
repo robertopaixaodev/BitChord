@@ -1,7 +1,6 @@
 package com.music.bitchord.ui
 
 import android.app.Application
-import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.music.bitchord.R
@@ -1688,6 +1687,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                 }
             }
+            // The listener's own library is the one feed YouTube cannot supply.
+            // Asked alongside the rest and prepended, so its newest releases sit
+            // near the top; a server that is off or slow simply contributes no
+            // shelf rather than holding the page up.
+            if (AppSettings.navidromeEnabled.value) {
+                launch {
+                    val source = SourceRegistry.active()
+                        .firstOrNull { it.kind == SourceKind.NAVIDROME }
+                    val albums = source?.let {
+                        withTimeoutOrNull(HOME_ALBUM_TIMEOUT_MS) {
+                            it.getRecentAlbums(HOME_ALBUM_LIMIT)
+                        }
+                    }.orEmpty()
+                    if (isCurrentHomeLoad(identity, generation) && albums.isNotEmpty()) {
+                        val shelf = HomeShelf(
+                            title = text(R.string.home_recently_added),
+                            items = albums.map { album ->
+                                ShelfItem(
+                                    title = album.title,
+                                    subtitle = listOfNotNull(
+                                        album.artist,
+                                        album.year?.toString(),
+                                    ).joinToString(" · "),
+                                    thumbnailUrl = album.thumbnailUrl,
+                                    videoId = null,
+                                    browseId = null,
+                                )
+                            },
+                            subtitle = text(R.string.home_navidrome_shelf),
+                        )
+                        publishHomeShelves(listOf(shelf), prepend = true)
+                    }
+                }
+            }
             YtMusicRepository.HOME_SUPPLEMENT_BROWSE_IDS.forEach { browseId ->
                 launch {
                     try {
@@ -2158,22 +2191,47 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     return@collectLatest
                 }
 
-                // Search is YouTube's alone. A module is a *substitution*
-                // layer, not a catalogue to browse: it never has cover art,
-                // radio, related tracks or an album page, so its rows arrived
-                // in the results list looking like YouTube's and then behaved
-                // nothing like them. Every track found here takes the ordinary
-                // YouTube path and is handed to the module at playback time —
-                // see [SourceResolver.substituteForYouTube] — which upgrades
-                // the ones it holds without any of them having to be a
-                // separate row to pick between.
+                // YouTube answers first and paints immediately; the configured
+                // catalogues are asked alongside it and merged in when they
+                // answer. A library server that is down therefore costs the
+                // search nothing, and the YouTube page is still there.
+                val sources = async { sourceResults(request.query, request.filter) }
                 val result = YtMusicRepository.searchPage(request.query, request.filter, request.anonymous)
                 // A search that has been superseded shouldn't land on screen,
                 // whether it succeeded or failed.
-                if (request.requestId != newestRequestId.get()) return@collectLatest
-                _results.value = result.fold(
-                    onSuccess = { page -> published(page, key, request.requestId) },
-                    onFailure = { failure -> UiState.Error(failure.friendly()) },
+                if (request.requestId != newestRequestId.get()) {
+                    sources.cancel()
+                    return@collectLatest
+                }
+                result.fold(
+                    onSuccess = { page ->
+                        _results.value = published(
+                            rows = page.rows,
+                            continuation = page.continuation,
+                            key = key,
+                            requestId = request.requestId,
+                        )
+                        val (above, below) = sources.await()
+                        if (request.requestId != newestRequestId.get()) return@fold
+                        if (above.isEmpty() && below.isEmpty()) return@fold
+                        val merged = (above + page.rows + below).distinctBy(::searchResultKey)
+                        searchCache.put(key, SearchCacheEntry(merged, page.continuation))
+                        _results.value = UiState.Success(merged)
+                    },
+                    onFailure = { failure ->
+                        // The library may still have answered. Showing its rows
+                        // beats an error page, but the result is deliberately
+                        // not cached: YouTube was never asked successfully, and
+                        // a later lookup should try it again.
+                        val (above, below) = sources.await()
+                        val sourceOnly = (above + below).distinctBy(::searchResultKey)
+                        if (sourceOnly.isNotEmpty() && request.requestId == newestRequestId.get()) {
+                            searchSession = SearchSession(key, request.requestId, request.filter, null)
+                            _results.value = UiState.Success(sourceOnly)
+                        } else {
+                            _results.value = UiState.Error(failure.friendly())
+                        }
+                    },
                 )
             }
     }
@@ -2279,14 +2337,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Caches and publishes the initial result page without waiting for later pages. */
     private fun published(
-        page: YtMusicRepository.SearchPage,
+        rows: List<SearchResult>,
+        continuation: String?,
         key: String,
         requestId: Long,
     ): UiState<List<SearchResult>> {
-        val rows = page.rows
         if (rows.isEmpty()) return UiState.Error(text(R.string.no_results))
-        searchCache.put(key, SearchCacheEntry(rows, page.continuation))
-        searchSession = SearchSession(key, requestId, _filter.value, page.continuation)
+        searchCache.put(key, SearchCacheEntry(rows, continuation))
+        searchSession = SearchSession(key, requestId, _filter.value, continuation)
         prefetchTopResult(rows)
         return UiState.Success(rows)
     }
@@ -2306,8 +2364,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * at the top of the results — which is the whole point of ranking it there —
      * and one ranked below appears under them instead.
      *
-     * Only the Songs filter fans out: albums, artists and playlists are
-     * browse-shaped, and [MusicSource] deliberately answers for tracks only.
+     * Only Songs and the mixed All tab fan out: albums, artists and playlists
+     * are browse-shaped, and [MusicSource] deliberately answers for tracks only.
+     * The All tab gets the same track rows, which the search screen files under
+     * its Songs section.
      *
      * Asked of the playback list rather than every enabled source, so a result
      * offered here is one this connection's ceiling would actually let play —
@@ -2319,8 +2379,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         filter: SearchFilter,
     ): Pair<List<SearchResult>, List<SearchResult>> = coroutineScope {
         val active = SourceRegistry.activeForPlayback()
-        Log.d("NavidromeDebug", "Fontes ativas na busca: ${active.map { it.kind }}")
-        if (filter != SearchFilter.SONGS) return@coroutineScope emptyList<SearchResult>() to emptyList()
+        // Songs and the mixed "All" tab ask the same catalogues. Albums,
+        // artists and playlists are browse-shaped and stay YouTube's alone.
+        if (filter != SearchFilter.SONGS && filter != SearchFilter.ALL) {
+            return@coroutineScope emptyList<SearchResult>() to emptyList()
+        }
         val youtubeRank = active.indexOfFirst { it.kind == SourceKind.YOUTUBE }
             .let { if (it < 0) active.size else it }
 
@@ -2445,6 +2508,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         /** Enough to be worth scrolling, short enough not to bury YouTube's own rows. */
         const val SOURCE_SEARCH_LIMIT = 12
+
+        /** How many of the library's newest releases the Home shelf shows. */
+        private const val HOME_ALBUM_LIMIT = 20
+
+        /**
+         * How long Home waits for its library shelf.
+         *
+         * The feed paints without it; a server on a slow VPN should cost the
+         * page nothing rather than hold the first YouTube shelf behind it.
+         */
+        private const val HOME_ALBUM_TIMEOUT_MS = 4000L
 
         /**
          * What a page with an empty listing says.
