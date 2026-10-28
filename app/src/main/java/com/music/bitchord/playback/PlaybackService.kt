@@ -3365,7 +3365,6 @@ class PlaybackService : MediaLibraryService() {
         reason: Int,
         alreadyAudible: Boolean = false,
     ) {
-        Log.d("EnrichmentDebug", "onTrackBecameCurrent: ${mediaItem?.mediaId}")
         val exoPlayer = player ?: return
         if (mediaItem?.mediaId != null && mediaItem.mediaId == enrichingMediaId) return
         syncBoundedContextCursor(exoPlayer, mediaItem)
@@ -3581,27 +3580,15 @@ class PlaybackService : MediaLibraryService() {
         if (window.isEmpty()) return
         for (index in window) {
             val song = exoPlayer.getMediaItemAt(index).toSong()
-            Log.d(
-                "EnrichmentDebug",
-                "needsEnrichment: ${song.needsEnrichment()}, isrc=${song.isrc}, trackNumber=${song.trackNumber}",
-            )
             if (!song.needsEnrichment()) continue
-            Log.d("EnrichmentDebug", "enrichQueueAround: calling enrichInBackground for ${song.title}")
             service.enrichInBackground(song) { enriched ->
-                Log.d("EnrichmentDebug", "enrichQueueAround: callback received for ${enriched?.title}")
                 if (enriched == null) {
-                    Log.d("EnrichmentDebug", "enrichQueueAround: enriched song is null")
                     return@enrichInBackground
                 }
-                Log.d(
-                    "EnrichmentDebug",
-                    "enrichQueueAround: applying enriched song ${enriched.title}, isrc=${enriched.isrc}",
-                )
                 scope.launch(Dispatchers.Main) {
                     applyEnrichedSong(enriched)
                 }
             }
-            Log.d("EnrichmentDebug", "enrichQueueAround: enrichInBackground dispatched for ${song.title}")
         }
     }
 
@@ -3613,10 +3600,6 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun applyEnrichedSong(enriched: Song) {
         val exoPlayer = player ?: return
-        Log.d(
-            "EnrichmentDebug",
-            "applyEnrichedSong: received ${enriched.title}, queueEntryId=${enriched.queueEntryId}",
-        )
         val updater = EnrichmentQueueUpdater(
             player = exoPlayer,
             isSwapping = { swappingMediaId != null },
@@ -3637,19 +3620,11 @@ class PlaybackService : MediaLibraryService() {
             if (currentMatches && currentIndex in 0 until exoPlayer.mediaItemCount) {
                 enrichingMediaId = currentItem?.mediaId
                 try {
-                    Log.d(
-                        "EnrichmentDebug",
-                        "applyEnrichedSong: updating current item ${enriched.title} at $currentIndex",
-                    )
                     updater.tryUpdateItemAt(currentIndex, enriched)
                 } finally {
                     enrichingMediaId = null
                 }
             } else {
-                Log.d(
-                    "EnrichmentDebug",
-                    "applyEnrichedSong: calling updateCurrentAndNext for ${enriched.title}",
-                )
                 updater.updateCurrentAndNext(enriched, lookahead = ENRICHMENT_LOOKAHEAD)
             }
             return
@@ -3657,10 +3632,6 @@ class PlaybackService : MediaLibraryService() {
         val isCurrent = targetIndex == currentIndex
         if (isCurrent) enrichingMediaId = exoPlayer.getMediaItemAt(targetIndex).mediaId
         try {
-            Log.d(
-                "EnrichmentDebug",
-                "applyEnrichedSong: updating item ${enriched.title} at $targetIndex",
-            )
             updater.tryUpdateItemAt(targetIndex, enriched)
         } finally {
             if (isCurrent) enrichingMediaId = null

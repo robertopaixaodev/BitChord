@@ -1,6 +1,5 @@
 package com.music.bitchord.data.enrichment
 
-import android.util.Log
 import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.model.Song
 import kotlinx.coroutines.CancellationException
@@ -40,7 +39,6 @@ class EnrichmentService(
      * which is too late for current + lookahead asking for the same row.
      */
     suspend fun enrich(song: Song): Song? {
-        Log.d("EnrichmentDebug", "Starting enrichment for: ${song.videoId} - ${song.title}")
         if (song.videoId.isBlank()) return null
         inFlight[song.videoId]?.let { return it.await() }
 
@@ -58,15 +56,8 @@ class EnrichmentService(
         return try {
             val cached = cache.get(song.videoId)
             if (cached != null) {
-                if (cached.isFreshMiss()) {
-                    Log.d("EnrichmentDebug", "Enrichment returned null for ${song.title}")
-                    return null
-                }
-                if (cached.hasAny) {
-                    val merged = song.mergedWith(cached.toPartial())
-                    Log.d("EnrichmentDebug", "Enrichment success for ${song.title}: isrc=${merged.isrc}")
-                    return merged
-                }
+                if (cached.isFreshMiss()) return null
+                if (cached.hasAny) return song.mergedWith(cached.toPartial())
             }
 
             var working = song
@@ -78,7 +69,6 @@ class EnrichmentService(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Log.e("EnrichmentDebug", "Provider ${provider.name} failed: ${e.message}", e)
                     TrackLog.w(TAG, "${provider.name} provider failed for '${song.title}'", e, song.videoId)
                     null
                 }
@@ -91,18 +81,15 @@ class EnrichmentService(
             val resolved = resolvedBy
             if (resolved == null) {
                 cache.putMiss(song.videoId)
-                Log.d("EnrichmentDebug", "Enrichment returned null for ${song.title}")
                 null
             } else {
                 cache.put(working, resolved)
-                Log.d("EnrichmentDebug", "Enrichment success for ${song.title}: isrc=${working.isrc}")
                 working
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             TrackLog.w(TAG, "Enrichment failed for '${song.title}'", e, song.videoId)
-            Log.d("EnrichmentDebug", "Enrichment returned null for ${song.title}")
             null
         }
     }
