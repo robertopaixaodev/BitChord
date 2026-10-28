@@ -1,5 +1,6 @@
 package com.music.bitchord.data.enrichment
 
+import android.util.Log
 import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.model.Song
 import io.ktor.client.HttpClient
@@ -74,6 +75,7 @@ class MusicBrainzProvider(
                 parameter("limit", 5)
                 header(HttpHeaders.UserAgent, userAgent)
             }
+            Log.d("EnrichmentDebug", "MusicBrainz response code: ${response.status}")
             if (!response.status.isSuccess()) {
                 TrackLog.w(
                     TAG,
@@ -99,6 +101,7 @@ class MusicBrainzProvider(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            Log.e("EnrichmentDebug", "Network error in ${this::class.simpleName}: ${e.message}")
             TrackLog.w(TAG, "MusicBrainz enrichment failed for '${song.title}'", e, song.videoId)
             null
         }

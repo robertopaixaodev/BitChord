@@ -1,5 +1,6 @@
 package com.music.bitchord.data.enrichment
 
+import android.util.Log
 import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.model.Song
 import io.ktor.client.HttpClient
@@ -46,6 +47,7 @@ class ItunesProvider(
                 parameter("entity", "song")
                 parameter("limit", 5)
             }
+            Log.d("EnrichmentDebug", "iTunes response code: ${response.status}")
             if (!response.status.isSuccess()) {
                 TrackLog.w(TAG, "iTunes returned ${response.status.value} for '${song.title}'", song.videoId)
                 return null
@@ -66,6 +68,7 @@ class ItunesProvider(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            Log.e("EnrichmentDebug", "Network error in ${this::class.simpleName}: ${e.message}")
             TrackLog.w(TAG, "iTunes enrichment failed for '${song.title}'", e, song.videoId)
             null
         }
