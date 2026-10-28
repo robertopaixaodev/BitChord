@@ -3619,7 +3619,7 @@ class PlaybackService : MediaLibraryService() {
         )
         val updater = EnrichmentQueueUpdater(
             player = exoPlayer,
-            isSwapping = { swappingMediaId != null || enrichingMediaId != null },
+            isSwapping = { swappingMediaId != null },
         )
         val currentIndex = exoPlayer.currentMediaItemIndex
         val currentItem = exoPlayer.currentMediaItem
