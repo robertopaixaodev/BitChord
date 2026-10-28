@@ -1794,6 +1794,11 @@ object AppSettings {
             .apply()
     }
 
+    fun setNavidromeEnabled(enabled: Boolean) {
+        navidromeEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_NAVIDROME_ENABLED, enabled).apply()
+    }
+
     fun navidromeConfigOrNull(): NavidromeConfig? {
         val url = navidromeUrl.value.trim()
         if (url.isBlank()) return null

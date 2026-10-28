@@ -39,6 +39,9 @@ import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -135,10 +138,17 @@ fun SourcesScreen(
     val smbShare by AppSettings.smbShare.collectAsStateWithLifecycle()
     val smbUsername by AppSettings.smbUsername.collectAsStateWithLifecycle()
     val smbPassword by AppSettings.smbPassword.collectAsStateWithLifecycle()
+    val navidromeUrl by AppSettings.navidromeUrl.collectAsStateWithLifecycle()
+    val navidromeEnabled by AppSettings.navidromeEnabled.collectAsStateWithLifecycle()
 
     /** Last known reachability per source, filled in as the probes come back. */
     val health = remember { mutableStateMapOf<String, SourceHealth>() }
     val losslessOutput by LosslessOutput.state.collectAsStateWithLifecycle()
+    var showNavidromeDialog by remember { mutableStateOf(false) }
+    var navidromeUrlInput by remember { mutableStateOf("") }
+    var navidromeUsernameInput by remember { mutableStateOf("") }
+    var navidromePasswordInput by remember { mutableStateOf("") }
+    var navidromeEnabledInput by remember { mutableStateOf(false) }
 
     // Every source that has a server to reach is probed, so an addon gets a
     // reachability line — which is the only feedback that a URL just pasted in
@@ -226,7 +236,15 @@ fun SourcesScreen(
             // under a second heading would break the one thing this screen is
             // for.
             val addons = configs.filter { it.kind.isUserAdded }
-            val fixed = configs.filterNot { it.kind.isUserAdded }
+            val navidromeConfig = SourceConfig(
+                id = AppSettings.navidromeConfigOrNull()?.configId ?: "navidrome",
+                kind = SourceKind.NAVIDROME,
+                label = SourceKind.NAVIDROME.label,
+                baseUrl = navidromeUrl,
+                enabled = navidromeEnabled,
+            )
+            val fixed = (configs.filterNot { it.kind.isUserAdded || it.kind == SourceKind.NAVIDROME } +
+                navidromeConfig)
                 .sortedBy { it.kind.rank }
 
             val row: @Composable (Int, SourceConfig, (@Composable () -> Unit)?) -> Unit =
@@ -247,13 +265,37 @@ fun SourcesScreen(
                         // Anything the user configured is theirs to edit or
                         // delete. JioSaavn and YouTube have no address to
                         // change, so a tap on them would open an empty editor.
-                        onClick = if (config.kind.needsServer) ({ onEditSource(config) }) else null,
+                        onClick = when {
+                            config.kind == SourceKind.NAVIDROME -> {
+                                {
+                                    navidromeUrlInput = AppSettings.navidromeUrl.value
+                                    navidromeUsernameInput = AppSettings.navidromeUsername.value
+                                    navidromePasswordInput = AppSettings.navidromePassword.value
+                                    navidromeEnabledInput = AppSettings.navidromeEnabled.value
+                                    showNavidromeDialog = true
+                                }
+                            }
+                            config.kind.needsServer -> ({ onEditSource(config) })
+                            else -> null
+                        },
                         // YouTube gets no switch at all — see
                         // [SourceRegistry.setEnabled] for why one would be a lie.
-                        onToggle = if (config.kind == SourceKind.YOUTUBE) {
-                            null
-                        } else {
-                            ({ enabled ->
+                        // Navidrome is not a SourceConfig, so its switch writes
+                        // the AppSettings flag the synthetic registry source reads.
+                        onToggle = when {
+                            config.kind == SourceKind.YOUTUBE -> null
+                            config.kind == SourceKind.NAVIDROME -> ({ enabled ->
+                                if (enabled && navidromeUrl.isBlank()) {
+                                    navidromeUrlInput = ""
+                                    navidromeUsernameInput = AppSettings.navidromeUsername.value
+                                    navidromePasswordInput = AppSettings.navidromePassword.value
+                                    navidromeEnabledInput = true
+                                    showNavidromeDialog = true
+                                } else {
+                                    AppSettings.setNavidromeEnabled(enabled)
+                                }
+                            })
+                            else -> ({ enabled ->
                                 if (config.kind == SourceKind.JIOSAAVN && enabled && !config.enabled) {
                                     onConfirmJioSaavn()
                                 } else {
@@ -373,6 +415,71 @@ fun SourcesScreen(
         }
 
         Spacer(Modifier.height(32.dp))
+    }
+
+    if (showNavidromeDialog) {
+        AlertDialog(
+            onDismissRequest = { showNavidromeDialog = false },
+            title = { Text("Navidrome") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = navidromeUrlInput,
+                        onValueChange = { navidromeUrlInput = it },
+                        label = { Text("Server URL") },
+                        placeholder = { Text("https://music.example.com") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = navidromeUsernameInput,
+                        onValueChange = { navidromeUsernameInput = it },
+                        label = { Text(stringResource(R.string.username)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = navidromePasswordInput,
+                        onValueChange = { navidromePasswordInput = it },
+                        label = { Text(stringResource(R.string.password)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row {
+                        Text("Enabled")
+                        Spacer(Modifier.width(12.dp))
+                        Switch(
+                            checked = navidromeEnabledInput,
+                            onCheckedChange = { navidromeEnabledInput = it },
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        AppSettings.setNavidrome(
+                            url = navidromeUrlInput,
+                            username = navidromeUsernameInput,
+                            password = navidromePasswordInput,
+                            enabled = navidromeEnabledInput,
+                        )
+                        showNavidromeDialog = false
+                    },
+                    enabled = navidromeUrlInput.isNotBlank(),
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNavidromeDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
     }
 
 }
@@ -905,6 +1012,7 @@ private fun SourceConfig.statusLine(health: SourceHealth?): String = when {
     ).joinToString(" · ")
     health is SourceHealth.Rejected -> health.reason
     health is SourceHealth.Unreachable -> stringResource(R.string.source_unreachable, health.reason)
+    kind == SourceKind.NAVIDROME -> if (baseUrl.isBlank()) "Não configurado" else baseUrl
     kind.needsServer -> stringResource(R.string.checking)
     else -> kind.labels.take(3).joinToString(" · ")
 }
