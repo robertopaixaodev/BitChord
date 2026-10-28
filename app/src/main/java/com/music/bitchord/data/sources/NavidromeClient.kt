@@ -6,13 +6,33 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonTransformingSerializer
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.security.MessageDigest
 import java.util.UUID
+
+/**
+ * OpenSubsonic is inconsistent about these two fields: classic Subsonic sends
+ * a string, OpenSubsonic sends a one-element array. Either shape means the same
+ * identifier, so collapse an array to its first value before the String
+ * serializer sees it.
+ */
+internal object StringOrListSerializer : JsonTransformingSerializer<String>(String.serializer()) {
+    override fun transformDeserialize(element: JsonElement): JsonElement =
+        if (element is JsonArray) {
+            element.firstOrNull() ?: JsonPrimitive("")
+        } else {
+            element
+        }
+}
 
 @Serializable
 internal data class NavidromeSong(
@@ -25,8 +45,11 @@ internal data class NavidromeSong(
     @SerialName("discNumber") val discNumber: Int? = null,
     val year: Int? = null,
     val genre: String? = null,
+    @Serializable(with = StringOrListSerializer::class)
     val isrc: String? = null,
-    @SerialName("musicBrainzId") val musicBrainzId: String? = null,
+    @SerialName("musicBrainzId")
+    @Serializable(with = StringOrListSerializer::class)
+    val musicBrainzId: String? = null,
     @SerialName("coverArt") val coverArt: String? = null,
     val suffix: String? = null,
     @SerialName("bitRate") val bitRate: Int? = null,

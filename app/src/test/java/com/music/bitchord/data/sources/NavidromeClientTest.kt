@@ -63,6 +63,32 @@ class NavidromeClientTest {
     }
 
     @Test
+    fun `search accepts OpenSubsonic arrays for isrc and mbid`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok","version":"1.16.1",
+                      "searchResult3":{"song":[{
+                        "id":"song-1","title":"Enter Sandman","artist":"Metallica",
+                        "isrc":["USSM19901001"],
+                        "musicBrainzId":["mbid-1"]
+                      }]}}}
+                    """.trimIndent(),
+                ),
+            )
+            val client = NavidromeClient(config(server))
+
+            val songs = client.searchSongs("enter sandman metallica", 10)
+
+            assertEquals(1, songs.size)
+            assertEquals("USSM19901001", songs.single().isrc)
+            assertEquals("mbid-1", songs.single().musicBrainzId)
+        }
+    }
+
+    @Test
     fun `stream URL keeps the song id and asks for raw lossless`() {
         MockWebServer().use { server ->
             server.start()
