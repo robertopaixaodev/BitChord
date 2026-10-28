@@ -155,11 +155,15 @@ internal fun planEnrichmentTargets(
 }
 
 internal fun isProgressiveUri(uri: String): Boolean {
-    val path = uri.substringBefore('?').substringBefore('#')
+    val lower = uri.lowercase(Locale.ROOT)
+    if (lower.startsWith("bitchord://")) return true
+    if (lower.startsWith("rtsp://")) return false
+    val path = lower.substringBefore('?').substringBefore('#')
+    if (path.endsWith(".m3u8") || path.endsWith(".mpd")) return false
+    if (lower.contains("googlevideo.com")) return true
     val extension = path.substringAfterLast('/', path)
         .substringAfterLast('.', "")
-        .lowercase(Locale.ROOT)
-    return extension in PROGRESSIVE_EXTENSIONS
+    return extension in PROGRESSIVE_EXTENSIONS || extension == "webm"
 }
 
 /** The current row plus at most [lookahead] ahead; empty when the queue is gone. */

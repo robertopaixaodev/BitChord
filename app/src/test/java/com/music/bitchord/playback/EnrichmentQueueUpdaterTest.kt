@@ -243,14 +243,16 @@ class EnrichmentQueueUpdaterTest {
     }
 
     @Test
-    fun `progressive detection covers the direct-file extensions`() {
-        listOf("mp3", "flac", "m4a", "ogg", "opus", "wav", "aac").forEach {
+    fun `progressive detection covers direct files and internal uris`() {
+        listOf("mp3", "flac", "m4a", "ogg", "opus", "wav", "aac", "webm").forEach {
             assertTrue(isProgressiveUri("https://music.test/song.$it"))
             assertTrue(isProgressiveUri("https://music.test/song.$it?token=1"))
         }
+        assertTrue(isProgressiveUri("https://rr1.googlevideo.com/videoplayback?itag=251"))
+        assertTrue(isProgressiveUri("bitchord://watch?v=abc"))
         assertTrue(!isProgressiveUri("https://music.test/song.m3u8"))
         assertTrue(!isProgressiveUri("https://music.test/song.mpd"))
-        assertTrue(!isProgressiveUri("bitchord://watch?v=abc"))
+        assertTrue(!isProgressiveUri("rtsp://music.test/song"))
     }
 
     @Test
