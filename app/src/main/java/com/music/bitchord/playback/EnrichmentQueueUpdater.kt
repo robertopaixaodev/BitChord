@@ -71,7 +71,12 @@ class EnrichmentQueueUpdater(
         val count = player.mediaItemCount
         if (index !in 0 until count) return false
         val item = player.getMediaItemAt(index)
-        if (!matches(item.mediaId, item.queueEntryId, enriched)) return false
+        if (!matches(item.mediaId, item.queueEntryId, enriched)) {
+            if (enriched.queueEntryId != null && item.queueEntryId != enriched.queueEntryId) {
+                Log.d("EnrichmentDebug", "Updater: rejected queueEntryId mismatch")
+            }
+            return false
+        }
         val updatedItem = item.withIdentity(enriched)
         if (index == player.currentMediaItemIndex &&
             !canReplaceCurrent(item, updatedItem, enriched)
@@ -94,12 +99,23 @@ class EnrichmentQueueUpdater(
         updatedItem: MediaItem,
         enriched: Song,
     ): Boolean {
-        if (isSwapping()) return false
+        if (isSwapping()) {
+            Log.d("EnrichmentDebug", "Updater: rejected because isSwapping is true")
+            return false
+        }
         if (item.mediaId != enriched.videoId) return false
-        if (item.queueEntryId != enriched.queueEntryId) return false
+        if (item.queueEntryId != enriched.queueEntryId) {
+            Log.d("EnrichmentDebug", "Updater: rejected queueEntryId mismatch")
+            return false
+        }
         if (item.localConfiguration?.uri != updatedItem.localConfiguration?.uri) return false
         val uri = item.localConfiguration?.uri?.toString() ?: return false
-        return isProgressiveUri(uri)
+        Log.d("EnrichmentDebug", "Updater: checking URI ${item.localConfiguration?.uri}")
+        if (!isProgressiveUri(uri)) {
+            Log.d("EnrichmentDebug", "Updater: rejected non-progressive URI")
+            return false
+        }
+        return true
     }
 }
 
