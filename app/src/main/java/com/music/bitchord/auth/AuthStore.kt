@@ -121,6 +121,11 @@ class AuthStore(context: Context) {
         get() = prefs.getString(KEY_SMB_PASSWORD, null)
         set(value) = prefs.edit().putString(KEY_SMB_PASSWORD, value).apply()
 
+    /** The Navidrome password. Encrypted like every other credential here. */
+    var navidromePassword: String?
+        get() = prefs.getString(KEY_NAVIDROME_PASSWORD, null)
+        set(value) = prefs.edit().putString(KEY_NAVIDROME_PASSWORD, value).apply()
+
     /**
      * The channel the listener chose to act as, if they chose one.
      *
@@ -230,5 +235,6 @@ class AuthStore(context: Context) {
         private const val KEY_DISCORD_TOKEN = "discord_token"
         private const val KEY_WEBDAV_PASSWORD = "webdav_password"
         private const val KEY_SMB_PASSWORD = "smb_password"
+        private const val KEY_NAVIDROME_PASSWORD = "navidrome_password"
     }
 }

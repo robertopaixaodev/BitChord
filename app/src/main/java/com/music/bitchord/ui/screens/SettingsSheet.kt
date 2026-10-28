@@ -223,6 +223,8 @@ fun SettingsScreen(
     val legacyMeshGradient by AppSettings.legacyMeshGradient.collectAsStateWithLifecycle()
     val syncedLyrics by AppSettings.syncedLyrics.collectAsStateWithLifecycle()
     val lyricsSources by AppSettings.lyricsSources.collectAsStateWithLifecycle()
+    val navidromeEnabled by AppSettings.navidromeEnabled.collectAsStateWithLifecycle()
+    val navidromeUrl by AppSettings.navidromeUrl.collectAsStateWithLifecycle()
     val translationLanguage by AppSettings.translationLanguage.collectAsStateWithLifecycle()
     val theme by AppSettings.themeMode.collectAsStateWithLifecycle()
     val sessionId by AppSettings.audioSessionId.collectAsStateWithLifecycle()
@@ -359,6 +361,11 @@ fun SettingsScreen(
     }
     var showListenBrainzTokenDialog by remember { mutableStateOf(false) }
     var showLastfmLoginDialog by remember { mutableStateOf(false) }
+    var showNavidromeDialog by remember { mutableStateOf(false) }
+    var navidromeUrlInput by remember { mutableStateOf("") }
+    var navidromeUsernameInput by remember { mutableStateOf("") }
+    var navidromePasswordInput by remember { mutableStateOf("") }
+    var navidromeEnabledInput by remember { mutableStateOf(false) }
     val scrobbleScope = rememberCoroutineScope()
 
     val version = remember(context) {
@@ -454,6 +461,24 @@ fun SettingsScreen(
                     title = sourceTitle,
                     subtitle = sourceSubtitle,
                     onClick = onSources,
+                )
+            }
+            row("Navidrome", "subsonic", "navidrome", "self-hosted") {
+                SettingsRow(
+                    icon = Icons.Rounded.Dns,
+                    title = "Navidrome",
+                    subtitle = if (navidromeEnabled && navidromeUrl.isNotBlank()) {
+                        navidromeUrl
+                    } else {
+                        "Not configured"
+                    },
+                    onClick = {
+                        navidromeUrlInput = AppSettings.navidromeUrl.value
+                        navidromeUsernameInput = AppSettings.navidromeUsername.value
+                        navidromePasswordInput = AppSettings.navidromePassword.value
+                        navidromeEnabledInput = AppSettings.navidromeEnabled.value
+                        showNavidromeDialog = true
+                    },
                 )
             }
             val onWifiTitle = stringResource(R.string.on_wifi)
@@ -1862,6 +1887,70 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showLastfmLoginDialog = false }, enabled = !lastfmLoading) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+    if (showNavidromeDialog) {
+        AlertDialog(
+            onDismissRequest = { showNavidromeDialog = false },
+            title = { Text("Navidrome") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = navidromeUrlInput,
+                        onValueChange = { navidromeUrlInput = it },
+                        label = { Text("Server URL") },
+                        placeholder = { Text("https://music.example.com") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = navidromeUsernameInput,
+                        onValueChange = { navidromeUsernameInput = it },
+                        label = { Text(stringResource(R.string.username)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = navidromePasswordInput,
+                        onValueChange = { navidromePasswordInput = it },
+                        label = { Text(stringResource(R.string.password)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row {
+                        Text("Enabled")
+                        Spacer(Modifier.width(12.dp))
+                        Switch(
+                            checked = navidromeEnabledInput,
+                            onCheckedChange = { navidromeEnabledInput = it },
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        AppSettings.setNavidrome(
+                            url = navidromeUrlInput,
+                            username = navidromeUsernameInput,
+                            password = navidromePasswordInput,
+                            enabled = navidromeEnabledInput,
+                        )
+                        showNavidromeDialog = false
+                    },
+                    enabled = navidromeUrlInput.isNotBlank(),
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNavidromeDialog = false }) {
                     Text(stringResource(R.string.cancel))
                 }
             },

@@ -1,0 +1,90 @@
+package com.music.bitchord.data.sources
+
+import kotlinx.coroutines.runBlocking
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Test
+
+class NavidromeSourceTest {
+
+    private fun config(server: MockWebServer) = NavidromeConfig(
+        baseUrl = server.url("").toString().trimEnd('/'),
+        username = "listener",
+        password = "secret",
+    )
+
+    @Test
+    fun `search maps Subsonic rows into Song identity`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok","version":"1.16.1",
+                      "searchResult3":{"song":[{
+                        "id":"song-1","title":"Title","artist":"Artist",
+                        "album":"Album","duration":185,"track":3,
+                        "discNumber":1,"year":2001,"genre":"Rock",
+                        "isrc":"USRC17607839","musicBrainzId":"mbid-1",
+                        "coverArt":"cover-1","suffix":"flac","bitRate":1411
+                      }]}}}
+                    """.trimIndent(),
+                ),
+            )
+            val config = config(server)
+            val source = NavidromeSource(config.configId, config)
+
+            val songs = source.search("Title", limit = 10)
+            val song = songs.single()
+
+            assertEquals(SourceRegistry.trackKey(config.configId, "song-1"), song.videoId)
+            assertEquals("Title", song.title)
+            assertEquals("Artist", song.artist)
+            assertEquals("Album", song.albumName)
+            assertEquals("3:05", song.durationText)
+            assertEquals(3, song.trackNumber)
+            assertEquals(1, song.discNumber)
+            assertEquals(2001, song.year)
+            assertEquals("Rock", song.genre)
+            assertEquals("USRC17607839", song.isrc)
+            assertEquals("mbid-1", song.mbid)
+            assertEquals("LOSSLESS", song.sourceQuality)
+            assertNotNull(song.thumbnailUrl)
+        }
+    }
+
+    @Test
+    fun `stream reuses the cached row and builds a Subsonic URL`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok",
+                      "searchResult3":{"song":[{
+                        "id":"song-1","title":"Title","artist":"Artist",
+                        "duration":185,"suffix":"flac","bitRate":1411
+                      }]}}}
+                    """.trimIndent(),
+                ),
+            )
+            val config = config(server)
+            val source = NavidromeSource(config.configId, config)
+            source.search("Title", limit = 10)
+
+            val stream = source.stream("song-1", StreamRequest.Lossless)
+
+            assertNotNull(stream)
+            assertEquals(185, stream!!.durationSec)
+            assertEquals("flac", stream.format.codec)
+            val url = stream.url.toHttpUrl()
+            assertEquals("/rest/stream.view", url.encodedPath)
+            assertEquals("song-1", url.queryParameter("id"))
+            assertEquals("0", url.queryParameter("maxBitRate"))
+            assertEquals("raw", url.queryParameter("format"))
+        }
+    }
+}

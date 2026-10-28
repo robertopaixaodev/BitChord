@@ -12,6 +12,7 @@ import com.music.bitchord.auth.AuthStore
 import com.music.bitchord.data.canvas.SpotifyToken
 import com.music.bitchord.data.lyrics.LyricsSource
 import com.music.bitchord.data.sources.SourceKind
+import com.music.bitchord.data.sources.NavidromeConfig
 import com.music.bitchord.playback.EqLayout
 import com.music.bitchord.playback.EqualizerPreset
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -595,6 +596,19 @@ object AppSettings {
     val webdavUsername = MutableStateFlow("")
     val webdavPassword = MutableStateFlow("")
 
+    // ── Navidrome / Subsonic ─────────────────────────────────────────────
+
+    /**
+     * A self-hosted Navidrome/Subsonic library.
+     *
+     * URL and username travel in plain prefs; the password is mirrored from
+     * [AuthStore] like WebDAV/SMB, so it stays encrypted and out of backups.
+     */
+    val navidromeUrl = MutableStateFlow("")
+    val navidromeUsername = MutableStateFlow("")
+    val navidromePassword = MutableStateFlow("")
+    val navidromeEnabled = MutableStateFlow(false)
+
     // ── SMB ───────────────────────────────────────────────────────────────
 
     /**
@@ -930,6 +944,10 @@ object AppSettings {
         webdavUrl.value = prefs.getString(KEY_WEBDAV_URL, "").orEmpty()
         webdavUsername.value = prefs.getString(KEY_WEBDAV_USERNAME, "").orEmpty()
         webdavPassword.value = authStore.webdavPassword.orEmpty()
+        navidromeUrl.value = prefs.getString(KEY_NAVIDROME_URL, "").orEmpty()
+        navidromeUsername.value = prefs.getString(KEY_NAVIDROME_USERNAME, "").orEmpty()
+        navidromePassword.value = authStore.navidromePassword.orEmpty()
+        navidromeEnabled.value = prefs.getBoolean(KEY_NAVIDROME_ENABLED, false)
         smbHost.value = prefs.getString(KEY_SMB_HOST, "").orEmpty()
         smbShare.value = prefs.getString(KEY_SMB_SHARE, "").orEmpty()
         smbBasePath.value = prefs.getString(KEY_SMB_BASE_PATH, "").orEmpty()
@@ -1762,6 +1780,26 @@ object AppSettings {
         setWebDavPassword("")
     }
 
+    fun setNavidrome(url: String, username: String, password: String, enabled: Boolean) {
+        val normalized = url.trim().trimEnd('/').removeSuffix("/rest")
+        navidromeUrl.value = normalized
+        navidromeUsername.value = username.trim()
+        navidromePassword.value = password
+        navidromeEnabled.value = enabled
+        authStore.navidromePassword = password.ifEmpty { null }
+        prefs.edit()
+            .putString(KEY_NAVIDROME_URL, normalized)
+            .putString(KEY_NAVIDROME_USERNAME, username.trim())
+            .putBoolean(KEY_NAVIDROME_ENABLED, enabled)
+            .apply()
+    }
+
+    fun navidromeConfigOrNull(): NavidromeConfig? {
+        val url = navidromeUrl.value.trim()
+        if (url.isBlank()) return null
+        return NavidromeConfig(url, navidromeUsername.value.trim(), navidromePassword.value)
+    }
+
     fun setSmbHost(value: String) {
         val normalized = value.trim()
         smbHost.value = normalized
@@ -2063,6 +2101,9 @@ object AppSettings {
     private const val KEY_LOCAL_MUSIC_FOLDER_URI = "local_music_folder_uri"
     private const val KEY_WEBDAV_URL = "webdav_url"
     private const val KEY_WEBDAV_USERNAME = "webdav_username"
+    private const val KEY_NAVIDROME_URL = "navidrome_url"
+    private const val KEY_NAVIDROME_USERNAME = "navidrome_username"
+    private const val KEY_NAVIDROME_ENABLED = "navidrome_enabled"
     private const val KEY_SMB_HOST = "smb_host"
     private const val KEY_SMB_SHARE = "smb_share"
     private const val KEY_SMB_BASE_PATH = "smb_base_path"

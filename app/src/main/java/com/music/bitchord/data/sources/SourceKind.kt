@@ -134,6 +134,24 @@ enum class SourceKind(
         needsServer = false,
         canServeLossless = false,
         worthPrefetching = true,
+        rank = 3,
+    ),
+
+    /**
+     * A self-hosted Navidrome/Subsonic library.
+     *
+     * One track is one `/rest/stream` URL, so this kind needs no pack
+     * expansion or file selection. It sits after addons/modules and before
+     * JioSaavn/YouTube: a library the listener runs themselves is a better
+     * first answer than a public catalogue, but it is not the app's fallback.
+     */
+    NAVIDROME(
+        label = "Navidrome",
+        detail = "Biblioteca Subsonic",
+        labels = listOf("FLAC", "Subsonic", "Self-hosted"),
+        needsServer = true,
+        canServeLossless = true,
+        worthPrefetching = true,
         rank = 2,
     ),
 
@@ -150,7 +168,7 @@ enum class SourceKind(
         labels = listOf("Lossy", "Full catalogue", "Radio"),
         needsServer = false,
         canServeLossless = false,
-        rank = 3,
+        rank = 4,
     ),
     ;
 

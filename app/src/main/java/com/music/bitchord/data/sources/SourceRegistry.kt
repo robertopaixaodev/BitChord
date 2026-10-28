@@ -184,13 +184,13 @@ object SourceRegistry {
      * apply no connection-quality ceiling — see [SourceResolver.forDownload].
      */
     fun active(): List<MusicSource> =
-        enabledConfigs(configs.value)
+        (enabledConfigs(configs.value)
             // Not in the walk at all while it would be refused anyway: an addon
             // that asked for a lossless output costs nothing — not even a timed
             // out search — while there isn't one. See [SourceConfig.checkValidLossless].
             .filterNot { it.awaitsLosslessOutput }
+            .mapNotNull { instances[it.id] } + listOfNotNull(navidromeSourceOrNull()))
             .sortedBy { it.kind.rank }
-            .mapNotNull { instances[it.id] }
 
     /**
      * [active], minus the addons whose manifest said `allowDownloads: 0`. A
@@ -243,9 +243,28 @@ object SourceRegistry {
         return active().filter { ceiling.permits(it.kind) }
     }
 
-    fun instance(configId: String): MusicSource? = instances[configId]
+    fun instance(configId: String): MusicSource? =
+        instances[configId] ?: navidromeSourceOrNull()?.takeIf { it.configId == configId }
 
-    fun config(configId: String): SourceConfig? = configs.value.firstOrNull { it.id == configId }
+    fun config(configId: String): SourceConfig? =
+        configs.value.firstOrNull { it.id == configId } ?: navidromeConfigOrNull()?.takeIf { it.id == configId }
+
+    private fun navidromeSourceOrNull(): NavidromeSource? {
+        if (!AppSettings.navidromeEnabled.value) return null
+        val config = AppSettings.navidromeConfigOrNull()?.takeIf { it.isComplete } ?: return null
+        return NavidromeSource(config.configId, config)
+    }
+
+    private fun navidromeConfigOrNull(): SourceConfig? {
+        val config = AppSettings.navidromeConfigOrNull() ?: return null
+        return SourceConfig(
+            id = config.configId,
+            kind = SourceKind.NAVIDROME,
+            label = config.displayName,
+            baseUrl = config.baseUrl,
+            enabled = AppSettings.navidromeEnabled.value,
+        )
+    }
 
     /**
      * Drops completed addon track answers for an explicit quality retry.
@@ -456,6 +475,11 @@ object SourceRegistry {
         // Same protocol, same implementation — the kinds differ only in rank.
         SourceKind.CUSTOM_MODULE -> ModuleSource(config)
         SourceKind.MODULE -> ModuleSource(config)
+        SourceKind.NAVIDROME -> {
+            val live = AppSettings.navidromeConfigOrNull()
+            if (live != null) NavidromeSource(live.configId, live)
+            else NavidromeSource(config.id, NavidromeConfig(config.baseUrl, "", ""))
+        }
         SourceKind.JIOSAAVN -> JioSaavnSource(config)
         SourceKind.YOUTUBE -> YouTubeSource(config)
     }
