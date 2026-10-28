@@ -1,6 +1,7 @@
 package com.music.bitchord.playback
 
 import android.os.Bundle
+import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import com.music.bitchord.data.model.Song
@@ -36,6 +37,7 @@ class EnrichmentQueueUpdater(
 ) {
 
     fun updateCurrentAndNext(enriched: Song, lookahead: Int = 8): Int {
+        Log.d("EnrichmentDebug", "Updating queue for: ${enriched.title}")
         if (enriched.videoId.isBlank()) return 0
         val count = player.mediaItemCount
         val currentIndex = player.currentMediaItemIndex

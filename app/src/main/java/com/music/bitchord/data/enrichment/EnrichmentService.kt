@@ -1,5 +1,6 @@
 package com.music.bitchord.data.enrichment
 
+import android.util.Log
 import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.model.Song
 import kotlinx.coroutines.CancellationException
@@ -39,6 +40,7 @@ class EnrichmentService(
      * which is too late for current + lookahead asking for the same row.
      */
     suspend fun enrich(song: Song): Song? {
+        Log.d("EnrichmentDebug", "Starting enrichment for: ${song.videoId} - ${song.title}")
         if (song.videoId.isBlank()) return null
         inFlight[song.videoId]?.let { return it.await() }
 

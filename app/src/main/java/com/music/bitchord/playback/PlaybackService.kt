@@ -3365,6 +3365,7 @@ class PlaybackService : MediaLibraryService() {
         reason: Int,
         alreadyAudible: Boolean = false,
     ) {
+        Log.d("EnrichmentDebug", "onTrackBecameCurrent: ${mediaItem?.mediaId}")
         val exoPlayer = player ?: return
         if (mediaItem?.mediaId != null && mediaItem.mediaId == enrichingMediaId) return
         syncBoundedContextCursor(exoPlayer, mediaItem)
@@ -3580,6 +3581,10 @@ class PlaybackService : MediaLibraryService() {
         if (window.isEmpty()) return
         for (index in window) {
             val song = exoPlayer.getMediaItemAt(index).toSong()
+            Log.d(
+                "EnrichmentDebug",
+                "needsEnrichment: ${song.needsEnrichment()}, isrc=${song.isrc}, trackNumber=${song.trackNumber}",
+            )
             if (!song.needsEnrichment()) continue
             service.enrichInBackground(song) { enriched ->
                 if (enriched == null) return@enrichInBackground
