@@ -83,7 +83,11 @@ class EnrichmentQueueUpdater(
         ) {
             return false
         }
+        Log.d("EnrichmentDebug", "Updater: calling replaceMediaItem for ${enriched.title} at $index")
         player.replaceMediaItem(index, updatedItem)
+        Log.d("EnrichmentDebug", "Updater: replaceMediaItem SUCCESS for ${enriched.title} at $index")
+        val replacedItem = player.getMediaItemAt(index)
+        Log.d("EnrichmentDebug", "Updater: new item extras = ${replacedItem.mediaMetadata.extras}")
         return true
     }
 
