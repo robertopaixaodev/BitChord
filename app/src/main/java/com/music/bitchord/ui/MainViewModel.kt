@@ -1,6 +1,7 @@
 package com.music.bitchord.ui
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.music.bitchord.R
@@ -2317,8 +2318,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         query: String,
         filter: SearchFilter,
     ): Pair<List<SearchResult>, List<SearchResult>> = coroutineScope {
-        if (filter != SearchFilter.SONGS) return@coroutineScope emptyList<SearchResult>() to emptyList()
         val active = SourceRegistry.activeForPlayback()
+        Log.d("NavidromeDebug", "Fontes ativas na busca: ${active.map { it.kind }}")
+        if (filter != SearchFilter.SONGS) return@coroutineScope emptyList<SearchResult>() to emptyList()
         val youtubeRank = active.indexOfFirst { it.kind == SourceKind.YOUTUBE }
             .let { if (it < 0) active.size else it }
 

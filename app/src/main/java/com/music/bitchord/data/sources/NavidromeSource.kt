@@ -1,5 +1,6 @@
 package com.music.bitchord.data.sources
 
+import android.util.Log
 import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.model.Song
 import kotlinx.coroutines.CancellationException
@@ -44,6 +45,7 @@ class NavidromeSource(
         waitForAll: Boolean,
         request: StreamRequest?,
     ): List<Song> = withContext(Dispatchers.IO) {
+        Log.d("NavidromeDebug", "Iniciando busca no Navidrome para: $query")
         if (query.isBlank() || limit <= 0) return@withContext emptyList()
         try {
             client.searchSongs(query, limit).take(limit).map { row ->
