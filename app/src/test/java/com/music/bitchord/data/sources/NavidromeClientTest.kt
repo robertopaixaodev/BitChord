@@ -58,7 +58,8 @@ class NavidromeClientTest {
             assertNotNull(salt)
             assertEquals(md5("secret$salt"), url.queryParameter("t"))
             assertEquals("Title", url.queryParameter("query"))
-            assertEquals("10", url.queryParameter("songCount"))
+            assertEquals("100", url.queryParameter("songCount"))
+            assertEquals("50", url.queryParameter("albumCount"))
         }
     }
 
@@ -225,10 +226,10 @@ class NavidromeClientTest {
             assertEquals("ar-1", artists.single().id)
             assertEquals("song-1", songs.single().id)
             val albumUrl = server.takeRequest().requestUrl!!
-            assertEquals("5", albumUrl.queryParameter("albumCount"))
+            assertEquals("50", albumUrl.queryParameter("albumCount"))
             assertEquals("0", albumUrl.queryParameter("songCount"))
             val artistUrl = server.takeRequest().requestUrl!!
-            assertEquals("5", artistUrl.queryParameter("artistCount"))
+            assertEquals("20", artistUrl.queryParameter("artistCount"))
             val albumSongsUrl = server.takeRequest().requestUrl!!
             assertEquals("/rest/getAlbum.view", albumSongsUrl.encodedPath)
             assertEquals("album-1", albumSongsUrl.queryParameter("id"))

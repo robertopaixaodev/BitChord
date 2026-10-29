@@ -142,6 +142,49 @@ class NavidromeSourceTest {
     }
 
     @Test
+    fun `artist search dedupes ids and falls back to the album credit`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok",
+                      "searchResult3":{"artist":[
+                        {"id":"ar-1","name":"Eminem"},
+                        {"id":"ar-1","name":"Eminem"},
+                        {"id":"ar-2","name":"Eminem"}
+                      ]}}}
+                    """.trimIndent(),
+                ),
+            )
+            server.enqueue(
+                MockResponse().setBody(
+                    """{"subsonic-response":{"status":"ok","searchResult3":{"artist":[]}}}""",
+                ),
+            )
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok",
+                      "searchResult3":{"album":[
+                        {"id":"album-1","name":"The Eminem Show","artist":"Eminem","coverArt":"cover-1"}
+                      ]}}}
+                    """.trimIndent(),
+                ),
+            )
+            val config = config(server)
+            val source = NavidromeSource(config.configId, config)
+
+            val direct = source.searchArtists("Eminem", 10)
+            val fromAlbum = source.searchArtists("the Eminem show", 10)
+
+            assertEquals(1, direct.size)
+            assertEquals("ar-1", direct.single().id)
+            assertEquals("Eminem", fromAlbum.single().name)
+        }
+    }
+
+    @Test
     fun `stream reuses the cached row and builds a Subsonic URL`() = runBlocking {
         MockWebServer().use { server ->
             server.start()

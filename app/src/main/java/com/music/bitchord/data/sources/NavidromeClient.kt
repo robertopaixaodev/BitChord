@@ -197,8 +197,11 @@ class NavidromeClient(
                 "search3.view",
                 listOf(
                     "query" to query,
-                    "songCount" to limit.toString(),
-                    "albumCount" to "0",
+                    // The server's own cap is cheap; the UI's page was the
+                    // thing that stopped at twelve. Ask for a full page and
+                    // let the caller take what it needs.
+                    "songCount" to maxOf(limit, NAVIDROME_SONG_COUNT).toString(),
+                    "albumCount" to NAVIDROME_ALBUM_COUNT.toString(),
                     "artistCount" to "0",
                 ),
             )
@@ -213,7 +216,7 @@ class NavidromeClient(
                 listOf(
                     "query" to query,
                     "songCount" to "0",
-                    "albumCount" to limit.toString(),
+                    "albumCount" to maxOf(limit, NAVIDROME_ALBUM_COUNT).toString(),
                     "artistCount" to "0",
                 ),
             )
@@ -228,11 +231,13 @@ class NavidromeClient(
                 listOf(
                     "query" to query,
                     "songCount" to "0",
-                    "albumCount" to "0",
-                    "artistCount" to limit.toString(),
+                    "albumCount" to NAVIDROME_ALBUM_COUNT.toString(),
+                    "artistCount" to maxOf(limit, NAVIDROME_ARTIST_COUNT).toString(),
                 ),
             )
-            body.searchResult?.artist.orEmpty().take(limit)
+            body.searchResult?.artist.orEmpty()
+                .distinctBy { it.name.lowercase().ifBlank { it.id } }
+                .take(limit)
         }
 
     internal suspend fun albumSongs(albumId: String): List<NavidromeSong> =
@@ -242,12 +247,21 @@ class NavidromeClient(
         }
 
     internal suspend fun recentAlbums(limit: Int): List<NavidromeAlbum> =
+        albumsByType("newest", limit)
+
+    internal suspend fun frequentAlbums(limit: Int): List<NavidromeAlbum> =
+        albumsByType("frequent", limit)
+
+    internal suspend fun randomAlbums(limit: Int): List<NavidromeAlbum> =
+        albumsByType("random", limit)
+
+    internal suspend fun albumsByType(type: String, limit: Int): List<NavidromeAlbum> =
         withContext(Dispatchers.IO) {
             if (limit <= 0) return@withContext emptyList()
             val body = get(
                 "getAlbumList2.view",
                 listOf(
-                    "type" to "newest",
+                    "type" to type,
                     "size" to limit.toString(),
                 ),
             )
@@ -344,5 +358,8 @@ class NavidromeClient(
     private companion object {
         const val API_VERSION = "1.16.1"
         const val CLIENT_NAME = "BitChord"
+        const val NAVIDROME_SONG_COUNT = 100
+        const val NAVIDROME_ALBUM_COUNT = 50
+        const val NAVIDROME_ARTIST_COUNT = 20
     }
 }

@@ -2455,6 +2455,7 @@ internal fun SettingsRow(
     badge: String? = null,
     enabled: Boolean = true,
     iconPainter: Painter? = null,
+    iconTint: Color = MaterialTheme.colorScheme.onBackground,
     onClick: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
@@ -2471,14 +2472,14 @@ internal fun SettingsRow(
             Icon(
                 painter = iconPainter,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onBackground,
+                tint = iconTint,
                 modifier = Modifier.size(ICON_SIZE),
             )
         } else if (icon != null) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onBackground,
+                tint = iconTint,
                 modifier = Modifier.size(ICON_SIZE),
             )
         }

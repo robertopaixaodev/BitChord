@@ -30,6 +30,7 @@
     <string name="downloaded_songs">Downloaded songs</string>
     <string name="local_music">Local Music</string>
     <string name="search_source_youtube" translatable="false">YouTube</string>
+    <string name="search_source_navidrome" translatable="false">Navidrome</string>
     <string name="search_source_addons">Addons</string>
     <string name="search_addons_none">No addons are enabled. Add one in Settings → Sources.</string>
     <string name="audio_files_on_device">Audio files on device</string>
@@ -655,12 +656,17 @@
     <string name="sources_no_lossless">Sources such as Navidrome and WebDAV can provide lossless audio (FLAC) natively.</string>
     <string name="source_badge_lossless">Lossless</string>
     <string name="home_recently_added">Recently added</string>
+    <string name="home_most_played">Most played</string>
+    <string name="home_random">Random picks</string>
     <string name="home_navidrome_shelf">From your Navidrome library</string>
     <string name="home_no_sources">Nothing to show yet. Enable a source in Sources, or save some music.</string>
     <string name="explore_genres">Genres</string>
     <string name="explore_artists">Artists</string>
     <string name="sources_order_footer">If a source does not have a track or cannot be reached, BitChord tries the next one. Sources above YouTube can replace its recording when they return a better version.</string>
     <string name="sources_order_header">Sources, tried in this order</string>
+    <string name="sources_extensions_header">Extensions</string>
+    <string name="youtube_music">YouTube Music</string>
+    <string name="youtube_description">The full catalogue, streamed at Opus. Lossy, with no lossless rendition to ask for.</string>
     <string name="sources_quality_capped">This connection is set below High quality, so streams are transcoded to fit that limit. Downloads are unaffected.</string>
     <string name="jiosaavn_mismatch_warning">May match the wrong version of a song. Enable at your own risk.</string>
     <string name="enable_jiosaavn">Enable JioSaavn?</string>
@@ -817,7 +823,7 @@
     <string name="navidrome">Navidrome</string>
     <string name="navidrome_subtitle">Your Subsonic music library</string>
     <string name="navidrome_not_configured">Not configured</string>
-    <string name="navidrome_description">Point BitChord at your Navidrome or Subsonic server to search and play the music you keep there, lossless included.</string>
+    <string name="navidrome_description">Point BitChord at your Navidrome or Subsonic server to search and play the music you keep there.</string>
     <string name="navidrome_server_url_hint">https://music.example.com</string>
     <string name="navidrome_disconnect">Disconnect</string>
     <string name="navidrome_test_failed">Couldn’t reach it: %1$s</string>

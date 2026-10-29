@@ -108,6 +108,7 @@ class NavidromeSource(
                     thumbnailUrl = artist.coverArt?.let(client::coverUrl),
                 )
             }.filter { it.name.isNotBlank() }
+                .distinctBy { it.name.lowercase().ifBlank { it.id } }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -160,10 +161,16 @@ class NavidromeSource(
         return row.toSong()
     }
 
-    override suspend fun getRecentAlbums(limit: Int): List<Album> = withContext(Dispatchers.IO) {
+    override suspend fun getRecentAlbums(limit: Int): List<Album> = albums("newest", limit)
+
+    /**
+     * Albums of a Subsonic album-list type (`newest`, `frequent`, `random`).
+     * Used by Home's library shelves.
+     */
+    suspend fun albums(type: String, limit: Int): List<Album> = withContext(Dispatchers.IO) {
         if (limit <= 0) return@withContext emptyList()
         try {
-            client.recentAlbums(limit).take(limit).map { row ->
+            client.albumsByType(type, limit).take(limit).map { row ->
                 Album(
                     id = row.id,
                     title = row.name.ifBlank { "Unknown Album" },
@@ -176,7 +183,7 @@ class NavidromeSource(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            TrackLog.w(TAG, "Navidrome album list failed: ${e.message}")
+            TrackLog.w(TAG, "Navidrome $type album list failed: ${e.message}")
             emptyList()
         }
     }
@@ -209,14 +216,28 @@ class NavidromeSource(
         withContext(Dispatchers.IO) {
             if (query.isBlank() || limit <= 0) return@withContext emptyList()
             try {
-                client.searchArtists(query, limit).take(limit).map { artist ->
+                val direct = client.searchArtists(query, limit).map { artist ->
                     SourceArtist(
                         id = artist.id,
                         name = artist.name,
                         albumCount = artist.albumCount,
                         thumbnailUrl = artist.coverArt?.let(client::coverUrl),
                     )
-                }
+                }.filter { it.name.isNotBlank() }
+                    .distinctBy { it.name.lowercase().ifBlank { it.id } }
+                if (direct.isNotEmpty()) return@withContext direct.take(limit)
+                // `search3` often reports no artists for an album title (the
+                // canonical "the Eminem show" case). The album it did return
+                // carries the credit, so derive the artist from that instead of
+                // showing an empty tab.
+                client.searchAlbums(query, limit).mapNotNull { album ->
+                    val name = album.artist?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    SourceArtist(
+                        id = "",
+                        name = name,
+                        thumbnailUrl = album.coverArt?.let(client::coverUrl),
+                    )
+                }.distinctBy { it.name.lowercase() }.take(limit)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

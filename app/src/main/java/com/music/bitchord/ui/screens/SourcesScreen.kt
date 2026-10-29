@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -42,7 +41,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,6 +58,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -75,7 +76,6 @@ import com.music.bitchord.data.smb.SmbRepository
 import com.music.bitchord.data.webdav.WebDavRepository
 import com.music.bitchord.data.settings.AudioQuality
 import com.music.bitchord.data.sources.AddonSource
-import com.music.bitchord.data.sources.NavidromeClient
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceHealth
 import com.music.bitchord.data.sources.SourceKind
@@ -191,9 +191,6 @@ fun SourcesScreen(
     // the user onto Wi-Fi. See [AudioQuality.permits].
     val ceiling = if (metered == true) cellularQuality else wifiQuality
 
-    /** Whether the ceiling in force right now would cap a lossless stream anyway. */
-    val cappedByQuality = ceiling != AudioQuality.LOSSLESS
-
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -207,86 +204,94 @@ fun SourcesScreen(
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 14.dp),
         )
 
-        SettingsGroup(
-            header = stringResource(R.string.sources_order_header),
-            footer = stringResource(R.string.sources_quality_capped).takeIf { cappedByQuality },
-        ) {
-            // The addons are split out from the rest because they are the only
-            // rows whose order is the *user's*. Everything else ranks by kind,
-            // which is fixed in [SourceKind] and not something a drag should be
-            // able to argue with — a gesture that let JioSaavn be dragged above
-            // an addon would be offering a choice the resolver does not
-            // actually honour.
-            //
-            // They are still one continuously numbered list. The numbers say
-            // what order the sources are tried in, and restarting the count
-            // under a second heading would break the one thing this screen is
-            // for.
-            val addons = configs.filter { it.kind.isUserAdded }
-            val fixed = configs.filterNot { it.kind.isUserAdded }
-                .sortedBy { it.kind.rank }
+        val addons = configs.filter { it.kind.isUserAdded }
+        val youtube = configs.firstOrNull { it.kind == SourceKind.YOUTUBE }
+        val jiosaavn = configs.firstOrNull { it.kind == SourceKind.JIOSAAVN }
+        // The one shut-out an addon can't tell apart from "not lossless":
+        // headphones on LDAC, LHDC or SSC UHQ whose codec Android won't name
+        // without the Nearby devices permission.
+        val waiting = configs.any { it.enabled && it.awaitsLosslessOutput }
 
-            val row: @Composable (Int, SourceConfig, (@Composable () -> Unit)?) -> Unit =
-                { position, config, handle ->
-                    SourceRow(
-                        position = position,
-                        config = config,
-                        health = health[config.id],
-                        // Switched on, but not reached on this connection. Said
-                        // on the row rather than by moving the switch, so the
-                        // switch keeps meaning "I want this source" and the
-                        // connection keeps meaning "…and here is what it costs
-                        // today".
-                        skippedByQuality = config.enabled && !ceiling.permits(config.kind),
-                        awaitingOutput = if (config.enabled && config.awaitsLosslessOutput) losslessOutput else null,
-                        onMetered = metered == true,
-                        ceiling = ceiling,
-                        // Anything the user configured is theirs to edit or
-                        // delete. JioSaavn and YouTube have no address to
-                        // change, so a tap on them would open an empty editor.
-                        onClick = if (config.kind.needsServer) ({ onEditSource(config) }) else null,
-                        // Every source is switchable now, YouTube included:
-                        // turning it off is how the listener says "only my own
-                        // library". JioSaavn still needs its one-time warning.
-                        onToggle = { enabled ->
-                            if (config.kind == SourceKind.JIOSAAVN && enabled && !config.enabled) {
-                                onConfirmJioSaavn()
-                            } else {
+        // User extensions keep their own group: theirs is the only order the
+        // user sets, and the drag belongs to that list.
+        if (addons.isNotEmpty()) {
+            SettingsGroup(header = stringResource(R.string.sources_extensions_header)) {
+                val row: @Composable (Int, SourceConfig, (@Composable () -> Unit)?) -> Unit =
+                    { position, config, handle ->
+                        SourceRow(
+                            position = position,
+                            config = config,
+                            health = health[config.id],
+                            skippedByQuality = config.enabled && !ceiling.permits(config.kind),
+                            awaitingOutput = if (config.enabled && config.awaitsLosslessOutput) losslessOutput else null,
+                            onMetered = metered == true,
+                            ceiling = ceiling,
+                            onClick = if (config.kind.needsServer) ({ onEditSource(config) }) else null,
+                            onToggle = { enabled ->
                                 SourceRegistry.setEnabled(config.id, enabled)
                                 onSourcesChanged()
-                            }
-                        },
-                        handle = handle,
-                    )
+                            },
+                            handle = handle,
+                        )
+                    }
+
+                ReorderableAddons(
+                    addons = addons,
+                    onReorder = { SourceRegistry.reorderAddons(it.map(SourceConfig::id)) },
+                    row = row,
+                )
+                if (waiting && losslessOutput.bluetoothCodecUnknown) {
+                    RowDivider()
+                    BluetoothCodecPermissionRow()
                 }
+            }
+        }
 
-            ReorderableAddons(
-                addons = addons,
-                onReorder = { SourceRegistry.reorderAddons(it.map(SourceConfig::id)) },
-                row = row,
+        // YouTube is a source like any other: no address to configure, but a
+        // switch of its own so it can be turned off without leaving the app.
+        if (youtube != null) {
+            RemoteLibrarySection(
+                icon = Icons.Rounded.PlayCircle,
+                title = stringResource(R.string.youtube_music),
+                description = stringResource(R.string.youtube_description),
+                subtitle = SourceKind.YOUTUBE.labels.joinToString(" · "),
+                listSubtitle = "",
+                disconnectTitle = "",
+                configured = false,
+                testFailedRes = 0,
+                onEdit = null,
+                onTest = { Result.success(Unit) },
+                onDisconnect = {},
+                enabled = youtube.enabled,
+                onToggle = { enabled ->
+                    SourceRegistry.setEnabled(youtube.id, enabled)
+                    onSourcesChanged()
+                },
             )
+        }
 
-            // No leading divider when addons came first: each of those wrappers
-            // ends with one, which is what makes them all the same height for
-            // the drag to measure against.
-            fixed.forEachIndexed { index, config ->
-                if (index > 0) RowDivider()
-                row(addons.size + index + 1, config, null)
-            }
-
-            // The one shut-out an addon can't tell apart from "not lossless":
-            // headphones on LDAC, LHDC or SSC UHQ whose codec Android won't name without
-            // the Nearby devices permission. Offered only then, and only from
-            // here, where the reason for asking is on screen.
-            val waiting = configs.any { it.enabled && it.awaitsLosslessOutput }
-            if (waiting && losslessOutput.bluetoothCodecUnknown) {
-                RowDivider()
-                BluetoothCodecPermissionRow()
-            }
-
-            RowDivider()
-            AddSourceRow(
-                onClick = { onEditSource(SourceConfig(kind = SourceKind.ADDON)) },
+        if (jiosaavn != null) {
+            RemoteLibrarySection(
+                icon = Icons.Rounded.GraphicEq,
+                title = SourceKind.JIOSAAVN.label,
+                description = SourceKind.JIOSAAVN.detail,
+                subtitle = SourceKind.JIOSAAVN.labels.joinToString(" · "),
+                listSubtitle = "",
+                disconnectTitle = "",
+                configured = false,
+                testFailedRes = 0,
+                onEdit = null,
+                onTest = { Result.success(Unit) },
+                onDisconnect = {},
+                enabled = jiosaavn.enabled,
+                onToggle = { enabled ->
+                    if (enabled && !jiosaavn.enabled) {
+                        onConfirmJioSaavn()
+                    } else {
+                        SourceRegistry.setEnabled(jiosaavn.id, enabled)
+                        onSourcesChanged()
+                    }
+                },
             )
         }
 
@@ -353,7 +358,8 @@ fun SourcesScreen(
         // should win. Its switch is the enabled flag the synthetic registry
         // source reads; the editor is hosted by the activity, like the others.
         RemoteLibrarySection(
-            icon = Icons.Rounded.Dns,
+            iconPainter = painterResource(R.drawable.ic_navidrome_light),
+            iconTint = Color.White,
             title = stringResource(R.string.navidrome),
             description = stringResource(R.string.navidrome_description),
             subtitle = if (navidromeUrl.isBlank() || navidromeUsername.isBlank()) {
@@ -361,11 +367,6 @@ fun SourcesScreen(
             } else {
                 navidromeUrl
             },
-            listSubtitle = stringResource(R.string.navidrome_subtitle),
-            disconnectTitle = stringResource(R.string.navidrome_disconnect),
-            configured = navidromeUrl.isNotBlank() && navidromeUsername.isNotBlank(),
-            testFailedRes = R.string.navidrome_test_failed,
-            badge = stringResource(R.string.source_badge_lossless),
             enabled = navidromeEnabled,
             onToggle = { enabled ->
                 if (enabled && navidromeUrl.isBlank()) {
@@ -376,21 +377,6 @@ fun SourcesScreen(
                 }
             },
             onEdit = onEditNavidrome,
-            onTest = {
-                val config = AppSettings.navidromeConfigOrNull()
-                    ?: return@RemoteLibrarySection Result.failure(
-                        IllegalStateException("Navidrome URL and username are required"),
-                    )
-                when (val health = NavidromeClient(config).health()) {
-                    is SourceHealth.Ok -> Result.success(Unit)
-                    is SourceHealth.Rejected -> Result.failure(Exception(health.reason))
-                    is SourceHealth.Unreachable -> Result.failure(Exception(health.reason))
-                }
-            },
-            onDisconnect = {
-                AppSettings.clearNavidrome()
-                onSourcesChanged()
-            },
         )
 
         SettingsGroup(
@@ -413,6 +399,14 @@ fun SourcesScreen(
             )
         }
 
+        // The one action that adds a *new* source, at the end where it belongs
+        // rather than mixed into the list of the ones already configured.
+        SettingsGroup {
+            AddSourceRow(
+                onClick = { onEditSource(SourceConfig(kind = SourceKind.ADDON)) },
+            )
+        }
+
         Spacer(Modifier.height(32.dp))
     }
 
@@ -420,25 +414,26 @@ fun SourcesScreen(
 
 
 /**
- * A personal library section: the server row, plus test and disconnect rows
- * once something is configured. Shared by WebDAV and SMB, which differ only
- * in what "configured" means and which repository answers the test — the
- * test state lives here rather than in the screen, so each section tracks
- * its own result.
+ * A source card: one row with its icon, title, subtitle and optional switch,
+ * plus test and disconnect rows when it has a server to configure. Shared by
+ * every source on this screen; [onTest] and [onDisconnect] are null for sources
+ * that have no server, such as YouTube.
  */
 @Composable
 private fun RemoteLibrarySection(
-    icon: ImageVector,
+    icon: ImageVector? = null,
+    iconPainter: Painter? = null,
+    iconTint: Color? = null,
     title: String,
     description: String,
     subtitle: String,
-    listSubtitle: String,
-    disconnectTitle: String,
-    configured: Boolean,
-    testFailedRes: Int,
-    onEdit: () -> Unit,
-    onTest: suspend () -> Result<Unit>,
-    onDisconnect: () -> Unit,
+    listSubtitle: String = "",
+    disconnectTitle: String = "",
+    configured: Boolean = false,
+    testFailedRes: Int = 0,
+    onEdit: (() -> Unit)? = null,
+    onTest: (suspend () -> Result<Unit>)? = null,
+    onDisconnect: (() -> Unit)? = null,
     /** A short mark beside the title, such as "Lossless". */
     badge: String? = null,
     /** The on/off state, when this library has one. Null for WebDAV and SMB. */
@@ -452,6 +447,8 @@ private fun RemoteLibrarySection(
     SettingsGroup(header = title, footer = description) {
         SettingsRow(
             icon = icon,
+            iconPainter = iconPainter,
+            iconTint = iconTint ?: MaterialTheme.colorScheme.onBackground,
             title = title,
             subtitle = subtitle,
             badge = badge,
@@ -471,7 +468,7 @@ private fun RemoteLibrarySection(
                 null
             },
         )
-        if (configured) {
+        if (configured && onTest != null) {
             RowDivider()
             SettingsRow(
                 icon = Icons.Rounded.Dns,
@@ -501,6 +498,8 @@ private fun RemoteLibrarySection(
                     }
                 },
             )
+        }
+        if (configured && onDisconnect != null) {
             RowDivider()
             SettingsRow(
                 icon = Icons.Rounded.DeleteSweep,
@@ -704,9 +703,8 @@ private fun AddSourceRow(onClick: () -> Unit) {
             .padding(horizontal = ROW_INSET, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Aligned with the numbers above it rather than with their icons, so
-        // the plus reads as belonging to the same column the list is indexed by.
-        Spacer(Modifier.width(24.dp))
+        // The plus lines up with the cards above, which have no leading
+        // position number once extensions moved to the end of the screen.
         Icon(
             imageVector = Icons.Rounded.Add,
             contentDescription = null,
@@ -884,20 +882,6 @@ private fun SourceRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                if (config.kind == SourceKind.NAVIDROME) {
-                    Spacer(Modifier.width(6.dp))
-                    Surface(
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-                        shape = RoundedCornerShape(4.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.source_badge_lossless),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
-                        )
-                    }
-                }
             }
             Text(
                 // The ceiling outranks the health line: a source that isn't

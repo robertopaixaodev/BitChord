@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -844,7 +845,7 @@ fun PullToRefresh(
  * mesh is the card, and white type is what sits on colour.
  */
 @Composable
-fun SignInBanner(onSignIn: () -> Unit, modifier: Modifier = Modifier) {
+fun ConnectSourcesBanner(onOpenSources: () -> Unit, modifier: Modifier = Modifier) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.98f else 1f, spring(stiffness = 900f), label = "signInScale")
@@ -857,7 +858,7 @@ fun SignInBanner(onSignIn: () -> Unit, modifier: Modifier = Modifier) {
                 scaleY = scale
             }
             .clip(RoundedCornerShape(22.dp))
-            .clickable(interactionSource = interaction, indication = null, onClick = onSignIn),
+            .clickable(interactionSource = interaction, indication = null, onClick = onOpenSources),
     ) {
         // A card is a few hundred dp the reader is looking straight at, which
         // is the case the mesh lets keep moving — see its `continuous` note.
@@ -871,7 +872,7 @@ fun SignInBanner(onSignIn: () -> Unit, modifier: Modifier = Modifier) {
         )
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 18.dp)) {
             Text(
-                text = stringResource(Res.string.sign_in_youtube_music),
+                text = stringResource(Res.string.connect_sources_title),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.W800,
                 color = Color.White,
@@ -884,14 +885,15 @@ fun SignInBanner(onSignIn: () -> Unit, modifier: Modifier = Modifier) {
                     .padding(start = 16.dp, end = 20.dp, top = 10.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Image(
-                    painter = painterResource(Res.drawable.ic_google_g),
+                Icon(
+                    imageVector = Icons.Rounded.LibraryMusic,
                     contentDescription = null,
+                    tint = Color.Black,
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = stringResource(Res.string.sign_in_with_google),
+                    text = stringResource(Res.string.connect_sources_action),
                     style = MaterialTheme.typography.titleMedium,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.W700,

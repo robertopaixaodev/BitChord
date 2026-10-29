@@ -86,7 +86,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import com.music.bitchord.data.sources.AddonSource
+import com.music.bitchord.data.sources.Album
 import com.music.bitchord.data.sources.NavidromeSource
+import com.music.bitchord.data.sources.SourceArtist
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.data.sources.SourceResolver
@@ -104,7 +106,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /** What the Search tab searches: YouTube Music, or the Local Music folder on this device. */
-enum class SearchSource { YOUTUBE, LIBRARY, ADDONS }
+enum class SearchSource { NAVIDROME, YOUTUBE, LIBRARY, ADDONS }
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -1431,6 +1433,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        _searchSource.value = preferredSearchSource()
         startSearchPipeline()
         startSuggestPipeline()
         startTypeaheadMediaPipeline()
@@ -1795,10 +1798,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // shelf rather than holding the page up.
             if (AppSettings.navidromeEnabled.value) {
                 launch {
-                    val shelf = navidromeHomeShelf()
+                    val shelves = navidromeHomeShelves()
                     if (isCurrentHomeLoad(identity, generation)) {
-                        if (shelf != null) {
-                            publishHomeShelves(listOf(shelf), prepend = true)
+                        if (shelves.isNotEmpty()) {
+                            publishHomeShelves(shelves, prepend = true)
                         } else if (!youtubeEnabled && _home.value !is UiState.Success) {
                             _home.value = UiState.Error(text(R.string.home_no_sources))
                         }
@@ -1854,17 +1857,35 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * The listener's newest library releases as a Home shelf, or null when
      * Navidrome is off, incomplete, slow, or empty.
      */
-    private suspend fun navidromeHomeShelf(): HomeShelf? {
-        if (!AppSettings.navidromeEnabled.value) return null
-        val source = SourceRegistry.active().firstOrNull { it.kind == SourceKind.NAVIDROME }
-            ?: return null
-        val albums = withTimeoutOrNull(HOME_ALBUM_TIMEOUT_MS) {
-            source.getRecentAlbums(HOME_ALBUM_LIMIT)
-        }.orEmpty()
-        if (albums.isEmpty()) return null
-        return HomeShelf(
-            title = text(R.string.home_recently_added),
-            items = albums.map { album ->
+    /**
+     * The listener's library shelves: newest, most played, and a random
+     * selection. Duplicate albums across the three are dropped after the first
+     * shelf that shows them, so the page reads as three collections rather than
+     * one list repeated.
+     */
+    private suspend fun navidromeHomeShelves(): List<HomeShelf> {
+        if (!AppSettings.navidromeEnabled.value) return emptyList()
+        val source = SourceRegistry.active()
+            .firstOrNull { it.kind == SourceKind.NAVIDROME } as? NavidromeSource
+            ?: return emptyList()
+        val (recent, frequent, random) = coroutineScope {
+            val recent = async {
+                withTimeoutOrNull(HOME_ALBUM_TIMEOUT_MS) { source.albums("newest", HOME_ALBUM_LIMIT) }
+                    .orEmpty()
+            }
+            val frequent = async {
+                withTimeoutOrNull(HOME_ALBUM_TIMEOUT_MS) { source.albums("frequent", HOME_ALBUM_LIMIT) }
+                    .orEmpty()
+            }
+            val random = async {
+                withTimeoutOrNull(HOME_ALBUM_TIMEOUT_MS) { source.albums("random", HOME_ALBUM_LIMIT) }
+                    .orEmpty()
+            }
+            Triple(recent.await(), frequent.await(), random.await())
+        }
+        val shown = mutableSetOf<String>()
+        fun shelf(title: String, albums: List<Album>): HomeShelf? {
+            val items = albums.filter { shown.add(it.id) }.map { album ->
                 ShelfItem(
                     title = album.title,
                     subtitle = listOfNotNull(
@@ -1873,13 +1894,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     ).joinToString(" · "),
                     thumbnailUrl = album.thumbnailUrl,
                     videoId = null,
-                    browseId = null,
+                    browseId = NAVIDROME_ALBUM_PREFIX + album.id,
+                    origin = SongOrigin.NAVIDROME,
                 )
-            },
-            subtitle = text(R.string.home_navidrome_shelf),
-            // The same ordinary cards as every other collection shelf, not
-            // the page's hero.
-            compactCards = true,
+            }
+            if (items.isEmpty()) return null
+            return HomeShelf(
+                title = title,
+                items = items,
+                subtitle = text(R.string.home_navidrome_shelf),
+                // The same ordinary cards as every other collection shelf, not
+                // the page's hero.
+                compactCards = true,
+            )
+        }
+        return listOfNotNull(
+            shelf(text(R.string.home_recently_added), recent),
+            shelf(text(R.string.home_most_played), frequent),
+            shelf(text(R.string.home_random), random),
         )
     }
 
@@ -1900,13 +1932,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (identity == listenerKey()) shelf?.let { publishHomeShelves(listOf(it), prepend = true) }
             }
         }
-        val libraryShelf = navidromeHomeShelf()
+        val libraryShelves = navidromeHomeShelves()
         if (identity == listenerKey()) {
-            if (libraryShelf != null) {
+            if (libraryShelves.isNotEmpty()) {
+                val titles = libraryShelves.map { it.title.lowercase(Locale.ROOT) }.toSet()
                 val without = (_home.value as? UiState.Success)?.data.orEmpty().filterNot {
-                    it.title.equals(libraryShelf.title, ignoreCase = true)
+                    it.title.lowercase(Locale.ROOT) in titles
                 }
-                _home.value = UiState.Success(listOf(libraryShelf) + without)
+                _home.value = UiState.Success(libraryShelves + without)
             } else if (!youtubeEnabled && _home.value !is UiState.Success) {
                 _home.value = UiState.Error(text(R.string.home_no_sources))
             }
@@ -2192,7 +2225,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Points the Search tab at YouTube Music or at the Local Music folder.
+     * Points the Search tab at one of the active sources.
      *
      * The query carries over: whatever is in the field is answered again by
      * the source just picked, so flipping is a way to compare the two rather
@@ -2206,8 +2239,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _searchScrollReset.value += 1
         when (source) {
             SearchSource.LIBRARY -> loadLibrarySongs()
-            SearchSource.YOUTUBE -> submitSearch()
+            SearchSource.YOUTUBE, SearchSource.NAVIDROME -> submitSearch()
             SearchSource.ADDONS -> if (_query.value.isNotBlank()) submitSearch()
+        }
+    }
+
+    /**
+     * The tab a fresh session should open on: the listener's own library when
+     * it is available, then YouTube, then the device's local folder.
+     */
+    fun preferredSearchSource(): SearchSource {
+        val kinds = SourceRegistry.active().map { it.kind }.toSet()
+        return when {
+            SourceKind.NAVIDROME in kinds -> SearchSource.NAVIDROME
+            SourceKind.YOUTUBE in kinds -> SearchSource.YOUTUBE
+            else -> SearchSource.LIBRARY
         }
     }
 
@@ -2252,16 +2298,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val filter: SearchFilter,
         val requestId: Long,
         val anonymous: Boolean = true,
+        /** Which Search tab asked, so the answer is scoped to that source. */
+        val scope: SearchSource = SearchSource.YOUTUBE,
     )
 
-    private fun cacheKey(query: String, filter: SearchFilter) = "${filter.name}:$query"
+    private fun cacheKey(query: String, filter: SearchFilter, scope: SearchSource) =
+        "${scope.name}:${filter.name}:$query"
 
     /**
      * The results of the longest earlier query this one starts with — near
      * enough to leave up while the narrower search runs.
      */
-    private fun prefixMatch(query: String, filter: SearchFilter): List<SearchResult>? {
-        val prefix = "${filter.name}:"
+    private fun prefixMatch(query: String, filter: SearchFilter, scope: SearchSource): List<SearchResult>? {
+        val prefix = "${scope.name}:${filter.name}:"
         return searchCache.snapshot()
             .filterKeys { it.startsWith(prefix) && query.startsWith(it.removePrefix(prefix), true) }
             .maxByOrNull { it.key.length }
@@ -2284,7 +2333,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _searchScrollReset.value += 1
         searchSession = null
         _searchLoadingMore.value = false
-        searchRequests.tryEmit(SearchRequest(query, _filter.value, id, anonymous))
+        searchRequests.tryEmit(SearchRequest(query, _filter.value, id, anonymous, _searchSource.value))
     }
 
     /**
@@ -2309,87 +2358,125 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun startSearchPipeline() = viewModelScope.launch {
         searchRequests
             .collectLatest { request ->
-                val key = cacheKey(request.query, request.filter)
-                val youtubeEnabled = SourceRegistry.active().any { it.kind == SourceKind.YOUTUBE }
+                val key = cacheKey(request.query, request.filter, request.scope)
+                val activeKinds = SourceRegistry.active().map { it.kind }.toSet()
+                val useNavidrome =
+                    request.scope == SearchSource.NAVIDROME && SourceKind.NAVIDROME in activeKinds
+                val useYouTube =
+                    request.scope == SearchSource.YOUTUBE && SourceKind.YOUTUBE in activeKinds
                 // Something to look at immediately: the exact answer if this
                 // query has been run before, otherwise the closest earlier
-                // one. Only fall back to a spinner with neither. With YouTube
-                // switched off, the cache is ignored: it may still hold rows
-                // from before that choice, and stale YouTube results are the
-                // one thing the caller asked not to see.
+                // one. Only fall back to a spinner with neither.
                 val exact = searchCache.get(key)
-                val cached = if (youtubeEnabled) {
-                    exact?.rows ?: prefixMatch(request.query, request.filter)
+                val cached = if (useNavidrome || useYouTube) {
+                    exact?.rows ?: prefixMatch(request.query, request.filter, request.scope)
                 } else {
                     null
                 }
                 _results.value = cached?.let { UiState.Success(it) } ?: UiState.Loading
-                if (!youtubeEnabled) {
-                    // The library is the whole search. No YouTube page is
-                    // requested, and no continuation exists to load.
-                    val (above, below) = sourceResults(request.query, request.filter)
-                    if (request.requestId != newestRequestId.get()) return@collectLatest
-                    val rows = (above + below).distinctBy(::searchResultKey)
-                    _results.value = if (rows.isEmpty()) {
-                        UiState.Error(text(R.string.no_results))
-                    } else {
-                        searchSession = SearchSession(key, request.requestId, request.filter, null)
-                        UiState.Success(rows)
-                    }
+                if (!useNavidrome && !useYouTube) {
+                    _results.value = UiState.Error(text(R.string.no_results))
                     return@collectLatest
                 }
-                // An explicit submit still has to reach the server even when
-                // an anonymous lookup cached the same query: that call is what
-                // records it in the account's history.
-                if (exact != null && request.anonymous) {
+                // An explicit YouTube submit still has to reach the server even
+                // when an anonymous lookup cached the same query: that call is
+                // what records it in the account's history. A Navidrome answer
+                // is local to the listener's own server and needs no history.
+                if (exact != null && request.anonymous && useYouTube) {
                     searchSession = SearchSession(key, request.requestId, request.filter, exact.continuation)
                     return@collectLatest
                 }
+                if (useNavidrome) {
+                    val rows = navidromeResults(request.query, request.filter)
+                    if (request.requestId != newestRequestId.get()) return@collectLatest
+                    _results.value = published(
+                        rows = rows,
+                        continuation = null,
+                        key = key,
+                        requestId = request.requestId,
+                    )
+                    return@collectLatest
+                }
 
-                // YouTube answers first and paints immediately; the configured
-                // catalogues are asked alongside it and merged in when they
-                // answer. A library server that is down therefore costs the
-                // search nothing, and the YouTube page is still there.
-                val sources = async { sourceResults(request.query, request.filter) }
                 val result = YtMusicRepository.searchPage(request.query, request.filter, request.anonymous)
                 // A search that has been superseded shouldn't land on screen,
                 // whether it succeeded or failed.
-                if (request.requestId != newestRequestId.get()) {
-                    sources.cancel()
-                    return@collectLatest
-                }
-                result.fold(
+                if (request.requestId != newestRequestId.get()) return@collectLatest
+                _results.value = result.fold(
                     onSuccess = { page ->
-                        _results.value = published(
+                        published(
                             rows = page.rows,
                             continuation = page.continuation,
                             key = key,
                             requestId = request.requestId,
                         )
-                        val (above, below) = sources.await()
-                        if (request.requestId != newestRequestId.get()) return@fold
-                        if (above.isEmpty() && below.isEmpty()) return@fold
-                        val merged = (above + page.rows + below).distinctBy(::searchResultKey)
-                        searchCache.put(key, SearchCacheEntry(merged, page.continuation))
-                        _results.value = UiState.Success(merged)
                     },
-                    onFailure = { failure ->
-                        // The library may still have answered. Showing its rows
-                        // beats an error page, but the result is deliberately
-                        // not cached: YouTube was never asked successfully, and
-                        // a later lookup should try it again.
-                        val (above, below) = sources.await()
-                        val sourceOnly = (above + below).distinctBy(::searchResultKey)
-                        if (sourceOnly.isNotEmpty() && request.requestId == newestRequestId.get()) {
-                            searchSession = SearchSession(key, request.requestId, request.filter, null)
-                            _results.value = UiState.Success(sourceOnly)
-                        } else {
-                            _results.value = UiState.Error(failure.friendly())
-                        }
-                    },
+                    onFailure = { failure -> UiState.Error(failure.friendly()) },
                 )
             }
     }
+
+    /**
+     * The Navidrome tab's answer, scoped to the listener's own library.
+     *
+     * It is a separate path from the YouTube page rather than a merge: the two
+     * are tabs now, and a row from one should never appear under the other.
+     * All/Songs get tracks, Albums/Artists get browse cards, and the remaining
+     * YouTube-only filters have nothing to say here.
+     */
+    private suspend fun navidromeResults(
+        query: String,
+        filter: SearchFilter,
+    ): List<SearchResult> = coroutineScope {
+        val navidrome = navidromeSource() ?: return@coroutineScope emptyList()
+        when (filter) {
+            SearchFilter.SONGS ->
+                navidrome.search(query, NAVIDROME_SONG_LIMIT).map { SearchResult.Track(it) }
+            SearchFilter.ALL -> {
+                val tracks = async { navidrome.search(query, NAVIDROME_SONG_LIMIT) }
+                val albums = async { navidrome.searchAlbums(query, NAVIDROME_ALBUM_LIMIT) }
+                val artists = async { navidrome.searchArtists(query, NAVIDROME_ARTIST_LIMIT) }
+                buildList {
+                    addAll(tracks.await().map { SearchResult.Track(it) })
+                    addAll(albums.await().map { it.asBrowseResult() })
+                    addAll(artists.await().map { it.asBrowseResult() })
+                }
+            }
+            SearchFilter.ALBUMS ->
+                navidrome.searchAlbums(query, NAVIDROME_ALBUM_LIMIT).map { it.asBrowseResult() }
+            SearchFilter.ARTISTS ->
+                navidrome.searchArtists(query, NAVIDROME_ARTIST_LIMIT).map { it.asBrowseResult() }
+            SearchFilter.VIDEOS, SearchFilter.PLAYLISTS -> emptyList()
+        }
+    }
+
+    private fun Album.asBrowseResult(): SearchResult = SearchResult.Browse(
+        BrowseItem(
+            browseId = NAVIDROME_ALBUM_PREFIX + id,
+            title = title,
+            subtitle = listOfNotNull(artist, year?.toString()).joinToString(" · "),
+            thumbnailUrl = thumbnailUrl,
+            type = BrowseType.ALBUM,
+            origin = SongOrigin.NAVIDROME,
+        ),
+    )
+
+    private fun SourceArtist.asBrowseResult(): SearchResult = SearchResult.Browse(
+        BrowseItem(
+            browseId = NAVIDROME_ARTIST_PREFIX + id,
+            title = name,
+            subtitle = albumCount?.let {
+                getApplication<Application>().resources.getQuantityString(
+                    R.plurals.artist_count,
+                    it,
+                    it,
+                )
+            }.orEmpty(),
+            thumbnailUrl = thumbnailUrl,
+            type = BrowseType.ARTIST,
+            origin = SongOrigin.NAVIDROME,
+        ),
+    )
 
     /**
      * Continues the visible search only when the list reaches its end. This is
@@ -2511,104 +2598,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * The enabled non-YouTube sources, asked at the same time and returned
-     * split at YouTube's own place in the order.
-     *
-     * The split is what makes the Sources screen's ordering visible where it
-     * matters most. A library server ranked above YouTube puts its own copies
-     * at the top of the results — which is the whole point of ranking it there —
-     * and one ranked below appears under them instead.
-     *
-     * Albums and artists are answered by the library as entities; Songs and the
-     * mixed All tab get its tracks. Playlists stay YouTube's own.
-     *
-     * Asked of the playback list rather than every enabled source, so a result
-     * offered here is one this connection's ceiling would actually let play —
-     * a row that can only be tapped into a YouTube stream is a lie about where
-     * the track is coming from.
-     */
-    private suspend fun sourceResults(
-        query: String,
-        filter: SearchFilter,
-    ): Pair<List<SearchResult>, List<SearchResult>> = coroutineScope {
-        val active = SourceRegistry.activeForPlayback()
-        // Albums and artists come from the library too, when it has them: the
-        // tab should not be a YouTube-only page with the listener's own
-        // collection missing. Navidrome is the only source that answers these
-        // as entities, so it supplies browse cards while YouTube supplies its
-        // own below.
-        if (filter == SearchFilter.ALBUMS || filter == SearchFilter.ARTISTS) {
-            val navidrome = active.firstOrNull { it.kind == SourceKind.NAVIDROME } as? NavidromeSource
-                ?: return@coroutineScope emptyList<SearchResult>() to emptyList()
-            val rows = when (filter) {
-                SearchFilter.ALBUMS -> navidrome.searchAlbums(query, SOURCE_SEARCH_LIMIT).map { album ->
-                    SearchResult.Browse(
-                        BrowseItem(
-                            browseId = NAVIDROME_ALBUM_PREFIX + album.id,
-                            title = album.title,
-                            subtitle = listOfNotNull(
-                                album.artist,
-                                album.year?.toString(),
-                            ).joinToString(" · "),
-                            thumbnailUrl = album.thumbnailUrl,
-                            type = BrowseType.ALBUM,
-                            origin = SongOrigin.NAVIDROME,
-                        ),
-                    )
-                }
-                else -> navidrome.searchArtists(query, SOURCE_SEARCH_LIMIT).map { artist ->
-                    SearchResult.Browse(
-                        BrowseItem(
-                            browseId = NAVIDROME_ARTIST_PREFIX + artist.id,
-                            title = artist.name,
-                            subtitle = artist.albumCount?.let {
-                                getApplication<Application>().resources.getQuantityString(
-                                    R.plurals.artist_count,
-                                    it,
-                                    it,
-                                )
-                            }.orEmpty(),
-                            thumbnailUrl = artist.thumbnailUrl,
-                            type = BrowseType.ARTIST,
-                            origin = SongOrigin.NAVIDROME,
-                        ),
-                    )
-                }
-            }
-            return@coroutineScope rows.toList() to emptyList()
-        }
-        // Songs and the mixed "All" tab ask the same catalogues. Playlists stay
-        // YouTube's alone.
-        if (filter != SearchFilter.SONGS && filter != SearchFilter.ALL) {
-            return@coroutineScope emptyList<SearchResult>() to emptyList()
-        }
-        val youtubeRank = active.indexOfFirst { it.kind == SourceKind.YOUTUBE }
-            .let { if (it < 0) active.size else it }
-
-        val answers = active
-            .filter { it.kind != SourceKind.YOUTUBE }
-            .map { source ->
-                source to async {
-                    // Per-source, so one slow or unreachable server delays the
-                    // results by at most this much rather than for as long as
-                    // its socket takes to give up.
-                    runCatching {
-                        withTimeout(SOURCE_SEARCH_TIMEOUT_MS) { source.search(query, SOURCE_SEARCH_LIMIT) }
-                    }.getOrDefault(emptyList())
-                }
-            }
-
-        val above = mutableListOf<SearchResult>()
-        val below = mutableListOf<SearchResult>()
-        answers.forEach { (source, job) ->
-            val rows = job.await().map { SearchResult.Track(it) }
-            val rank = active.indexOfFirst { it.configId == source.configId }
-            if (rank in 0 until youtubeRank) above += rows else below += rows
-        }
-        above to below
-    }
-
-    /**
      * Warms the stream URL for the top song result the instant results land,
      * not when it's tapped. [AudioCache] gives a head start to whatever's
      * already queued; a fresh search has nothing queued yet, and the top
@@ -2704,8 +2693,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
          */
         const val SOURCE_SEARCH_TIMEOUT_MS = 4000L
 
-        /** Enough to be worth scrolling, short enough not to bury YouTube's own rows. */
-        const val SOURCE_SEARCH_LIMIT = 12
+        /**
+         * How many rows the Navidrome tab asks for. The server-side search is
+         * cheap and its `search3` is the one page that holds the listener's
+         * whole answer; twelve rows was the bug, not the budget.
+         */
+        private const val NAVIDROME_SONG_LIMIT = 100
+        private const val NAVIDROME_ALBUM_LIMIT = 50
+        private const val NAVIDROME_ARTIST_LIMIT = 20
 
         /** How many of the library's newest releases the Home shelf shows. */
         private const val HOME_ALBUM_LIMIT = 20

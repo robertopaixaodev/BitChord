@@ -80,7 +80,7 @@ import com.music.bitchord.ui.components.PlayingAccent
 import com.music.bitchord.ui.components.PullToRefresh
 import com.music.bitchord.ui.components.SHELF_CARD_WIDTH
 import com.music.bitchord.ui.components.SearchPlayingBars
-import com.music.bitchord.ui.components.SignInBanner
+import com.music.bitchord.ui.components.ConnectSourcesBanner
 import com.music.bitchord.ui.components.feedMoreSkeleton
 import com.music.bitchord.ui.components.feedSkeleton
 import com.music.bitchord.ui.components.recentlyPlayedSkeleton
@@ -122,7 +122,7 @@ fun HomeScreen(
     /** The page's heading, or null for none — the desktop's pages carry no heading. */
     title: String?,
     signedIn: Boolean = true,
-    onSignIn: (() -> Unit)? = null,
+    onConnectSources: (() -> Unit)? = null,
     /**
      * Holding a card rather than tapping it. Every card on the feed answers,
      * whichever kind it is: the caller reads the item the same way it does for
@@ -168,9 +168,12 @@ fun HomeScreen(
             if (title != null) {
                 item { HomeTitle(title) }
             }
-            if (!signedIn && onSignIn != null) {
+            if (!signedIn && onConnectSources != null) {
                 item {
-                    SignInBanner(onSignIn = onSignIn, modifier = Modifier.padding(bottom = 8.dp))
+                    ConnectSourcesBanner(
+                        onOpenSources = onConnectSources,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
                 }
             }
             when (state) {

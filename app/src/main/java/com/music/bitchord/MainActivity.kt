@@ -754,6 +754,10 @@ private fun BitChordApp(
     val libraryState by viewModel.library.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
     val searchSource by viewModel.searchSource.collectAsStateWithLifecycle()
+    val sourceConfigs by SourceRegistry.configs.collectAsStateWithLifecycle()
+    val navidromeEnabled by AppSettings.navidromeEnabled.collectAsStateWithLifecycle()
+    val navidromeUrl by AppSettings.navidromeUrl.collectAsStateWithLifecycle()
+    val navidromeUsername by AppSettings.navidromeUsername.collectAsStateWithLifecycle()
     val libraryResults by viewModel.libraryResults.collectAsStateWithLifecycle()
     val addonResults by viewModel.addonResults.collectAsStateWithLifecycle()
     val signedIn by viewModel.signedIn.collectAsStateWithLifecycle()
@@ -1892,7 +1896,12 @@ private fun BitChordApp(
      */
     val onShelfLongPress: (ShelfItem) -> Unit = { item ->
         val song = shelfSong(item)
-        if (song != null) openSongMenu(song) else onBrowseLongPress(item)
+        if (song != null) {
+            openSongMenu(song)
+        } else if (item.origin == null) {
+            // The YouTube browse menu has nothing to offer a library card.
+            onBrowseLongPress(item)
+        }
     }
 
     /**
@@ -1993,6 +2002,25 @@ private fun BitChordApp(
         Manifest.permission.READ_MEDIA_AUDIO
     } else {
         Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+    val searchSourceOptions = buildList {
+        if (navidromeEnabled && navidromeUrl.isNotBlank() && navidromeUsername.isNotBlank()) {
+            add(SearchSource.NAVIDROME to stringResource(R.string.search_source_navidrome))
+        }
+        if (sourceConfigs.any { it.kind == SourceKind.YOUTUBE && it.enabled }) {
+            add(SearchSource.YOUTUBE to stringResource(R.string.search_source_youtube))
+        }
+        add(SearchSource.LIBRARY to stringResource(R.string.library))
+        if (sourceConfigs.any { it.kind == SourceKind.ADDON && it.enabled }) {
+            add(SearchSource.ADDONS to stringResource(R.string.search_source_addons))
+        }
+    }
+    // Turning a source off while its tab is selected should not leave the
+    // search pointing at a source that no longer exists.
+    LaunchedEffect(searchSourceOptions.map { it.first }) {
+        if (searchSourceOptions.none { it.first == searchSource }) {
+            viewModel.setSearchSource(searchSourceOptions.firstOrNull()?.first ?: SearchSource.LIBRARY)
+        }
     }
     // The Search tab's Library source reads the Local Music folder, so it asks
     // for the same permission opening that folder does.
@@ -3064,7 +3092,7 @@ private fun BitChordApp(
                                 isPlaying = player.isPlaying,
                                 title = stringResource(R.string.listen_now),
                                 signedIn = signedIn,
-                                onSignIn = { webSession = WebSessionMode.SIGN_IN },
+                                onConnectSources = { navigator.push(AppRoute.Sources) },
                                 onItemClick = { item, shelfTitle ->
                                     val song = shelfSong(item)
                                     // Hoisted because ShelfItem lives in :shared, and
@@ -3269,13 +3297,14 @@ private fun BitChordApp(
                                 // app has one look for "pick one of these".
                                 sourceSwitcher = {
                                     SegmentedControl(
-                                        options = listOf(
-                                            stringResource(R.string.search_source_youtube),
-                                            stringResource(R.string.library),
-                                            stringResource(R.string.search_source_addons),
-                                        ),
-                                        selectedIndex = searchSource.ordinal,
-                                        onSelect = { index -> onSearchSourceChange(SearchSource.entries[index]) },
+                                        options = searchSourceOptions.map { it.second },
+                                        selectedIndex = searchSourceOptions
+                                            .indexOfFirst { it.first == searchSource }
+                                            .coerceAtLeast(0),
+                                        onSelect = { index ->
+                                            searchSourceOptions.getOrNull(index)?.first
+                                                ?.let(onSearchSourceChange)
+                                        },
                                     )
                                 },
                                 searchingLibrary = searchSource == SearchSource.LIBRARY,

@@ -166,6 +166,8 @@
     <string name="search_section_library">Your Library</string>
     <string name="search_section_youtube">From YouTube Music</string>
     <string name="search_section_other">Other sources</string>
+    <string name="connect_sources_title">Connect your music sources</string>
+    <string name="connect_sources_action">Open Sources</string>
     <string name="search_addons_hint">Search your addons</string>
     <string name="search_addons_empty">Search every enabled addon at once. Tracks play straight from the addon.</string>
     <string name="search_addons_no_results">No addon has “%1$s”.</string>

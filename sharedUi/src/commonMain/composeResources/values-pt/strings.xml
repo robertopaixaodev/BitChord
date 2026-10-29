@@ -202,5 +202,7 @@
     <string name="search_section_library">Sua Biblioteca</string>
     <string name="search_section_youtube">Do YouTube Music</string>
     <string name="search_section_other">Outras fontes</string>
+    <string name="connect_sources_title">Conecte suas fontes de música</string>
+    <string name="connect_sources_action">Abrir Fontes</string>
     <string name="search_library_no_results">Nada na Música local corresponde a “%1$s”.</string>
 </resources>

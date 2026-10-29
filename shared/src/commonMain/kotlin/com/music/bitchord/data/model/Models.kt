@@ -458,6 +458,8 @@ data class ShelfItem(
     val thumbnailUrl: String?,
     val videoId: String?,
     val browseId: String?,
+    /** The catalogue behind a card that is not YouTube's. */
+    val origin: SongOrigin? = null,
 )
 
 /** The signed-in Google account, as YouTube Music reports it. */
