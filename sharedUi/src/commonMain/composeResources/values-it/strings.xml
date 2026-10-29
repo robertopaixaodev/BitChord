@@ -200,4 +200,7 @@
     <string name="search_library_empty">Cerca i brani nella cartella Musica locale.</string>
     <string name="search_library_hint">Brani, artisti e album</string>
     <string name="search_library_no_results">Nulla in Musica locale corrisponde a «%1$s».</string>
+    <string name="search_section_library">Your Library</string>
+    <string name="search_section_youtube">From YouTube Music</string>
+    <string name="search_section_other">Other sources</string>
 </resources>

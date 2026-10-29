@@ -408,7 +408,7 @@ enum class BrowseType { ALBUM, ARTIST, PLAYLIST, OTHER }
  * the Android module; this enum is the small part the shared UI needs in order
  * to mark a row without knowing how sources are configured.
  */
-enum class SongOrigin { NAVIDROME }
+enum class SongOrigin { NAVIDROME, JIOSAAVN, ADDON, MODULE }
 
 /** A queue-level origin shown above Now Playing, in the style of Spotify. */
 enum class PlaybackSourceType {
@@ -502,6 +502,15 @@ data class HomeShelf(
     val subtitle: String = "",
     val moreBrowseId: String? = null,
     val moreParams: String? = null,
+    /**
+     * Whether this shelf always uses the ordinary shelf-card width, even when
+     * it is the first one on the page.
+     *
+     * A library shelf is filed beside YouTube's own, not styled as the page's
+     * hero: its releases should look exactly like the "Albums & singles" row
+     * underneath, which is what a listener comparing the two expects.
+     */
+    val compactCards: Boolean = false,
 )
 
 /**

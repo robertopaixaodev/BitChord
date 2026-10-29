@@ -200,4 +200,7 @@
     <string name="search_library_empty">מחפש את השירים בתיקיית המוזיקה המקומית שלכם.</string>
     <string name="search_library_hint">שירים, אמנים ואלבומים</string>
     <string name="search_library_no_results">אין דבר במוזיקה המקומית שתואם ל-„%1$s”.</string>
+    <string name="search_section_library">Your Library</string>
+    <string name="search_section_youtube">From YouTube Music</string>
+    <string name="search_section_other">Other sources</string>
 </resources>

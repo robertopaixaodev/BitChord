@@ -1799,6 +1799,19 @@ object AppSettings {
         prefs.edit().putBoolean(KEY_NAVIDROME_ENABLED, enabled).apply()
     }
 
+    fun clearNavidrome() {
+        navidromeUrl.value = ""
+        navidromeUsername.value = ""
+        navidromePassword.value = ""
+        navidromeEnabled.value = false
+        authStore.navidromePassword = null
+        prefs.edit()
+            .remove(KEY_NAVIDROME_URL)
+            .remove(KEY_NAVIDROME_USERNAME)
+            .putBoolean(KEY_NAVIDROME_ENABLED, false)
+            .apply()
+    }
+
     fun navidromeConfigOrNull(): NavidromeConfig? {
         val url = navidromeUrl.value.trim()
         if (url.isBlank()) return null

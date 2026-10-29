@@ -10,6 +10,25 @@ import java.util.Collections
 import java.util.Locale
 
 /**
+ * A genre the server's library reports, for the Explore page.
+ *
+ * [name] is already display-ready; counts are shown as the secondary line.
+ */
+data class SourceGenre(
+    val name: String,
+    val songCount: Int? = null,
+    val albumCount: Int? = null,
+)
+
+/** An artist the server's library reports, for Explore's fallback list. */
+data class SourceArtist(
+    val id: String,
+    val name: String,
+    val albumCount: Int? = null,
+    val thumbnailUrl: String? = null,
+)
+
+/**
  * A Navidrome/Subsonic library.
  *
  * One search row is one `/rest/stream` URL: there is no pack to enumerate and
@@ -57,6 +76,88 @@ class NavidromeSource(
             TrackLog.w(TAG, "Navidrome search failed for '$query': ${e.message}")
             emptyList()
         }
+    }
+
+    /** Genres the library reports, for Explore. Empty when the server has none. */
+    suspend fun genres(): List<SourceGenre> = withContext(Dispatchers.IO) {
+        try {
+            client.genres().map { genre ->
+                SourceGenre(
+                    name = genre.displayName,
+                    songCount = genre.songCount,
+                    albumCount = genre.albumCount,
+                )
+            }.filter { it.name.isNotBlank() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            TrackLog.w(TAG, "Navidrome genre list failed: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /** Artists the library reports, used when it has no genres to show. */
+    suspend fun artists(limit: Int = 60): List<SourceArtist> = withContext(Dispatchers.IO) {
+        if (limit <= 0) return@withContext emptyList()
+        try {
+            client.artists().take(limit).map { artist ->
+                SourceArtist(
+                    id = artist.id,
+                    name = artist.name,
+                    albumCount = artist.albumCount,
+                    thumbnailUrl = artist.coverArt?.let(client::coverUrl),
+                )
+            }.filter { it.name.isNotBlank() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            TrackLog.w(TAG, "Navidrome artist list failed: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /** Tracks tagged with [genre], in the server's own order. */
+    suspend fun songsByGenre(genre: String, limit: Int = 100): List<Song> =
+        withContext(Dispatchers.IO) {
+            if (genre.isBlank() || limit <= 0) return@withContext emptyList()
+            try {
+                client.songsByGenre(genre, limit).take(limit).map(::remember)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                TrackLog.w(TAG, "Navidrome songs by genre failed for '$genre': ${e.message}")
+                emptyList()
+            }
+        }
+
+    /**
+     * Tracks credited to [artist].
+     *
+     * Subsonic's search3 is the one endpoint that answers this in a single
+     * request; the library is then filtered to rows whose artist credit matches
+     * exactly, because a title match would otherwise leak unrelated tracks into
+     * the artist's page. When the server credits the artist differently from
+     * what getArtists reported, the unfiltered result is a better answer than an
+     * empty page.
+     */
+    suspend fun songsByArtist(artist: String, limit: Int = 100): List<Song> =
+        withContext(Dispatchers.IO) {
+            if (artist.isBlank() || limit <= 0) return@withContext emptyList()
+            try {
+                val found = client.searchSongs(artist, limit * 2)
+                val credited = found.filter { it.artist.equals(artist, ignoreCase = true) }
+                (credited.ifEmpty { found }).take(limit).map(::remember)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                TrackLog.w(TAG, "Navidrome songs by artist failed for '$artist': ${e.message}")
+                emptyList()
+            }
+        }
+
+    private fun remember(row: NavidromeSong): Song {
+        rows[row.id] = row
+        return row.toSong()
     }
 
     override suspend fun getRecentAlbums(limit: Int): List<Album> = withContext(Dispatchers.IO) {

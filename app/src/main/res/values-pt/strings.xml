@@ -421,6 +421,9 @@
     <string name="source_badge_lossless">Lossless</string>
     <string name="home_recently_added">Adicionados Recentemente</string>
     <string name="home_navidrome_shelf">Da sua biblioteca Navidrome</string>
+    <string name="home_no_sources">Nada para mostrar ainda. Ative uma fonte em Fontes ou salve algumas músicas.</string>
+    <string name="explore_genres">Gêneros</string>
+    <string name="explore_artists">Artistas</string>
     <string name="sources_order_footer">Se uma fonte não tiver a faixa, o BitChord tenta a próxima. Fontes acima do YouTube podem substituí-lo quando encontram uma versão melhor.</string>
     <string name="sources_order_header">Fontes, tentadas nesta ordem</string>
     <string name="sources_quality_capped">Esta conexão está definida abaixo de Alta qualidade, então os fluxos são transcodificados. Downloads não são afetados.</string>
@@ -554,6 +557,13 @@
     <string name="webdav_server_url_hint">https://cloud.example.com/remote.php/dav/files/user/Music</string>
     <string name="webdav_disconnect">Desconectar</string>
     <string name="webdav_test_failed">Não foi possível acessar: %1$s</string>
+    <string name="navidrome">Navidrome</string>
+    <string name="navidrome_subtitle">Sua biblioteca Subsonic</string>
+    <string name="navidrome_not_configured">Não configurado</string>
+    <string name="navidrome_description">Conecte o BitChord ao seu servidor Navidrome ou Subsonic para buscar e tocar a música que você guarda lá, inclusive em lossless.</string>
+    <string name="navidrome_server_url_hint">https://music.example.com</string>
+    <string name="navidrome_disconnect">Desconectar</string>
+    <string name="navidrome_test_failed">Não foi possível acessar: %1$s</string>
     <string name="upload_to_webdav">Enviar para o WebDAV</string>
     <string name="webdav_conflict_title">“%1$s” já está no servidor</string>
     <string name="webdav_conflict_message">Substituir ou manter as duas cópias?</string>

@@ -627,6 +627,18 @@ class SourcesTest {
     }
 
     @Test
+    fun `a deliberately disabled YouTube stays disabled across launches`() {
+        val disabledYouTube = SourceConfig(kind = SourceKind.YOUTUBE, enabled = false)
+
+        val nextLaunch = SourceRegistry.sourcesForInit(
+            listOf(disabledYouTube),
+            forceJioSaavnOff = false,
+        )
+
+        assertFalse(nextLaunch.single { it.kind == SourceKind.YOUTUBE }.enabled)
+    }
+
+    @Test
     fun `disabled JioSaavn and addons are excluded from the source list used by downloads`() {
         val disabledJio = SourceConfig(kind = SourceKind.JIOSAAVN, enabled = false)
         val disabledAddon = SourceConfig(

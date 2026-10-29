@@ -61,6 +61,46 @@ private data class NavidromeSearchResult(
 )
 
 @Serializable
+internal data class NavidromeGenre(
+    val value: String? = null,
+    val name: String? = null,
+    @SerialName("songCount") val songCount: Int? = null,
+    @SerialName("albumCount") val albumCount: Int? = null,
+) {
+    val displayName: String get() = value ?: name.orEmpty()
+}
+
+@Serializable
+private data class NavidromeGenreList(
+    val genre: List<NavidromeGenre> = emptyList(),
+)
+
+@Serializable
+internal data class NavidromeArtist(
+    val id: String = "",
+    val name: String = "",
+    @SerialName("albumCount") val albumCount: Int? = null,
+    @SerialName("coverArt") val coverArt: String? = null,
+)
+
+@Serializable
+private data class NavidromeArtistIndex(
+    val artist: List<NavidromeArtist> = emptyList(),
+)
+
+@Serializable
+private data class NavidromeArtistList(
+    val index: List<NavidromeArtistIndex> = emptyList(),
+) {
+    val flat: List<NavidromeArtist> get() = index.flatMap(NavidromeArtistIndex::artist)
+}
+
+@Serializable
+private data class NavidromeSongs(
+    val song: List<NavidromeSong> = emptyList(),
+)
+
+@Serializable
 internal data class NavidromeAlbum(
     val id: String = "",
     val name: String = "",
@@ -90,6 +130,9 @@ private data class NavidromeBody(
     val error: NavidromeError? = null,
     @SerialName("searchResult3") val searchResult: NavidromeSearchResult? = null,
     @SerialName("albumList2") val albumList: NavidromeAlbumList? = null,
+    val genres: NavidromeGenreList? = null,
+    val artists: NavidromeArtistList? = null,
+    @SerialName("songsByGenre") val songsByGenre: NavidromeSongs? = null,
 )
 
 @Serializable
@@ -162,6 +205,28 @@ class NavidromeClient(
                 ),
             )
             body.albumList?.album.orEmpty().take(limit)
+        }
+
+    internal suspend fun genres(): List<NavidromeGenre> = withContext(Dispatchers.IO) {
+        get("getGenres.view").genres?.genre.orEmpty()
+    }
+
+    internal suspend fun artists(): List<NavidromeArtist> = withContext(Dispatchers.IO) {
+        get("getArtists.view").artists?.flat.orEmpty()
+    }
+
+    internal suspend fun songsByGenre(genre: String, limit: Int): List<NavidromeSong> =
+        withContext(Dispatchers.IO) {
+            if (genre.isBlank() || limit <= 0) return@withContext emptyList()
+            val body = get(
+                "getSongsByGenre.view",
+                listOf(
+                    "genre" to genre,
+                    "count" to limit.toString(),
+                    "offset" to "0",
+                ),
+            )
+            body.songsByGenre?.song.orEmpty().take(limit)
         }
 
     fun streamUrl(songId: String, request: StreamRequest): String {

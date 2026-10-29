@@ -150,7 +150,9 @@ object SourceRegistry {
             .filterNot { it.kind == SourceKind.MODULE }
             .map { config ->
                 when {
-                    config.kind == SourceKind.YOUTUBE && !config.enabled -> config.copy(enabled = true)
+                    // JioSaavn starts off for every install until its catalogue
+                    // risk is accepted. YouTube keeps whatever the listener
+                    // chose: it is no longer forced back on at every launch.
                     config.kind == SourceKind.JIOSAAVN && forceJioSaavnOff -> config.copy(enabled = false)
                     else -> config
                 }
@@ -314,16 +316,14 @@ object SourceRegistry {
     /**
      * Turns one source on or off.
      *
-     * YouTube is not switchable and silently ignores a request to disable it.
-     * It is the only source that can supply a home feed, radio or related
-     * tracks, and nothing else holds the full catalogue — switching it off
-     * doesn't even stop it being played, because a YouTube-queued track whose
-     * substitutes all miss still falls back to it. A switch that cannot honour
-     * its own off position is worse than no switch, so it isn't offered one:
-     * see [SourcesScreen][com.music.bitchord.ui.screens.SourcesScreen].
+     * Every source is switchable, YouTube included. Turning YouTube off is a
+     * standing choice to use only the libraries the listener configured: search
+     * stops asking it, Home stops waiting for its feed, and Explore falls back
+     * to Navidrome's genres when one is available. A YouTube-backed track that is
+     * already queued still plays — disabling a source says where new material
+     * comes from, not that the player should drop what it already has.
      */
     fun setEnabled(configId: String, enabled: Boolean) {
-        if (!enabled && config(configId)?.kind == SourceKind.YOUTUBE) return
         publish(configs.value.map { if (it.id == configId) it.copy(enabled = enabled) else it })
     }
 

@@ -200,4 +200,7 @@
     <string name="search_library_empty">Recherche les titres de votre dossier Musique locale.</string>
     <string name="search_library_hint">Titres, artistes et albums</string>
     <string name="search_library_no_results">Rien dans Musique locale ne correspond à « %1$s ».</string>
+    <string name="search_section_library">Your Library</string>
+    <string name="search_section_youtube">From YouTube Music</string>
+    <string name="search_section_other">Other sources</string>
 </resources>

@@ -199,5 +199,8 @@
     <string name="import_spotify_subtitle">De um link de playlist</string>
     <string name="search_library_empty">Pesquise as músicas da sua pasta de Música local.</string>
     <string name="search_library_hint">Músicas, artistas e álbuns</string>
+    <string name="search_section_library">Sua Biblioteca</string>
+    <string name="search_section_youtube">Do YouTube Music</string>
+    <string name="search_section_other">Outras fontes</string>
     <string name="search_library_no_results">Nada na Música local corresponde a “%1$s”.</string>
 </resources>

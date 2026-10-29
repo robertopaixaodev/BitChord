@@ -40,9 +40,6 @@ import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Surface
@@ -78,6 +75,7 @@ import com.music.bitchord.data.smb.SmbRepository
 import com.music.bitchord.data.webdav.WebDavRepository
 import com.music.bitchord.data.settings.AudioQuality
 import com.music.bitchord.data.sources.AddonSource
+import com.music.bitchord.data.sources.NavidromeClient
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceHealth
 import com.music.bitchord.data.sources.SourceKind
@@ -123,8 +121,12 @@ fun SourcesScreen(
     onEditWebDav: () -> Unit,
     /** As [onEditWebDav], for the SMB share editor. */
     onEditSmb: () -> Unit,
+    /** As [onEditWebDav], for the Navidrome/Subsonic editor. */
+    onEditNavidrome: () -> Unit,
     /** Opens the full-window warning before JioSaavn is opted into. */
     onConfirmJioSaavn: () -> Unit,
+    /** Called after a switch changes what the app may ask, so Home/Search can reload. */
+    onSourcesChanged: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -141,16 +143,12 @@ fun SourcesScreen(
     val smbUsername by AppSettings.smbUsername.collectAsStateWithLifecycle()
     val smbPassword by AppSettings.smbPassword.collectAsStateWithLifecycle()
     val navidromeUrl by AppSettings.navidromeUrl.collectAsStateWithLifecycle()
+    val navidromeUsername by AppSettings.navidromeUsername.collectAsStateWithLifecycle()
     val navidromeEnabled by AppSettings.navidromeEnabled.collectAsStateWithLifecycle()
 
     /** Last known reachability per source, filled in as the probes come back. */
     val health = remember { mutableStateMapOf<String, SourceHealth>() }
     val losslessOutput by LosslessOutput.state.collectAsStateWithLifecycle()
-    var showNavidromeDialog by remember { mutableStateOf(false) }
-    var navidromeUrlInput by remember { mutableStateOf("") }
-    var navidromeUsernameInput by remember { mutableStateOf("") }
-    var navidromePasswordInput by remember { mutableStateOf("") }
-    var navidromeEnabledInput by remember { mutableStateOf(false) }
 
     // Every source that has a server to reach is probed, so an addon gets a
     // reachability line — which is the only feedback that a URL just pasted in
@@ -195,10 +193,6 @@ fun SourcesScreen(
 
     /** Whether the ceiling in force right now would cap a lossless stream anyway. */
     val cappedByQuality = ceiling != AudioQuality.LOSSLESS
-    // Asked of the kinds themselves rather than of the module specifically, so
-    // a source added later answers this on its own terms instead of being
-    // invisible to it.
-    val anyLosslessSource = configs.any { it.enabled && it.isComplete && it.kind.canServeLossless }
 
     Column(
         modifier = modifier
@@ -215,16 +209,7 @@ fun SourcesScreen(
 
         SettingsGroup(
             header = stringResource(R.string.sources_order_header),
-            footer = buildString {
-                append(stringResource(R.string.sources_order_footer))
-                if (cappedByQuality) {
-                    append("\n\n")
-                    append(stringResource(R.string.sources_quality_capped))
-                } else if (!anyLosslessSource) {
-                    append("\n\n")
-                    append(stringResource(R.string.sources_no_lossless))
-                }
-            },
+            footer = stringResource(R.string.sources_quality_capped).takeIf { cappedByQuality },
         ) {
             // The addons are split out from the rest because they are the only
             // rows whose order is the *user's*. Everything else ranks by kind,
@@ -238,15 +223,7 @@ fun SourcesScreen(
             // under a second heading would break the one thing this screen is
             // for.
             val addons = configs.filter { it.kind.isUserAdded }
-            val navidromeConfig = SourceConfig(
-                id = AppSettings.navidromeConfigOrNull()?.configId ?: "navidrome",
-                kind = SourceKind.NAVIDROME,
-                label = SourceKind.NAVIDROME.label,
-                baseUrl = navidromeUrl,
-                enabled = navidromeEnabled,
-            )
-            val fixed = (configs.filterNot { it.kind.isUserAdded || it.kind == SourceKind.NAVIDROME } +
-                navidromeConfig)
+            val fixed = configs.filterNot { it.kind.isUserAdded }
                 .sortedBy { it.kind.rank }
 
             val row: @Composable (Int, SourceConfig, (@Composable () -> Unit)?) -> Unit =
@@ -267,43 +244,17 @@ fun SourcesScreen(
                         // Anything the user configured is theirs to edit or
                         // delete. JioSaavn and YouTube have no address to
                         // change, so a tap on them would open an empty editor.
-                        onClick = when {
-                            config.kind == SourceKind.NAVIDROME -> {
-                                {
-                                    navidromeUrlInput = AppSettings.navidromeUrl.value
-                                    navidromeUsernameInput = AppSettings.navidromeUsername.value
-                                    navidromePasswordInput = AppSettings.navidromePassword.value
-                                    navidromeEnabledInput = AppSettings.navidromeEnabled.value
-                                    showNavidromeDialog = true
-                                }
+                        onClick = if (config.kind.needsServer) ({ onEditSource(config) }) else null,
+                        // Every source is switchable now, YouTube included:
+                        // turning it off is how the listener says "only my own
+                        // library". JioSaavn still needs its one-time warning.
+                        onToggle = { enabled ->
+                            if (config.kind == SourceKind.JIOSAAVN && enabled && !config.enabled) {
+                                onConfirmJioSaavn()
+                            } else {
+                                SourceRegistry.setEnabled(config.id, enabled)
+                                onSourcesChanged()
                             }
-                            config.kind.needsServer -> ({ onEditSource(config) })
-                            else -> null
-                        },
-                        // YouTube gets no switch at all — see
-                        // [SourceRegistry.setEnabled] for why one would be a lie.
-                        // Navidrome is not a SourceConfig, so its switch writes
-                        // the AppSettings flag the synthetic registry source reads.
-                        onToggle = when {
-                            config.kind == SourceKind.YOUTUBE -> null
-                            config.kind == SourceKind.NAVIDROME -> ({ enabled ->
-                                if (enabled && navidromeUrl.isBlank()) {
-                                    navidromeUrlInput = ""
-                                    navidromeUsernameInput = AppSettings.navidromeUsername.value
-                                    navidromePasswordInput = AppSettings.navidromePassword.value
-                                    navidromeEnabledInput = true
-                                    showNavidromeDialog = true
-                                } else {
-                                    AppSettings.setNavidromeEnabled(enabled)
-                                }
-                            })
-                            else -> ({ enabled ->
-                                if (config.kind == SourceKind.JIOSAAVN && enabled && !config.enabled) {
-                                    onConfirmJioSaavn()
-                                } else {
-                                    SourceRegistry.setEnabled(config.id, enabled)
-                                }
-                            })
                         },
                         handle = handle,
                     )
@@ -396,6 +347,52 @@ fun SourcesScreen(
             onDisconnect = { AppSettings.clearSmb() },
         )
 
+        // A music library, filed beside WebDAV and SMB rather than in the
+        // order above: it holds the listener's own collection, and the YouTube
+        // ordering has nothing to say about which of those local libraries
+        // should win. Its switch is the enabled flag the synthetic registry
+        // source reads; the editor is hosted by the activity, like the others.
+        RemoteLibrarySection(
+            icon = Icons.Rounded.Dns,
+            title = stringResource(R.string.navidrome),
+            description = stringResource(R.string.navidrome_description),
+            subtitle = if (navidromeUrl.isBlank() || navidromeUsername.isBlank()) {
+                stringResource(R.string.navidrome_not_configured)
+            } else {
+                navidromeUrl
+            },
+            listSubtitle = stringResource(R.string.navidrome_subtitle),
+            disconnectTitle = stringResource(R.string.navidrome_disconnect),
+            configured = navidromeUrl.isNotBlank() && navidromeUsername.isNotBlank(),
+            testFailedRes = R.string.navidrome_test_failed,
+            badge = stringResource(R.string.source_badge_lossless),
+            enabled = navidromeEnabled,
+            onToggle = { enabled ->
+                if (enabled && navidromeUrl.isBlank()) {
+                    onEditNavidrome()
+                } else {
+                    AppSettings.setNavidromeEnabled(enabled)
+                    onSourcesChanged()
+                }
+            },
+            onEdit = onEditNavidrome,
+            onTest = {
+                val config = AppSettings.navidromeConfigOrNull()
+                    ?: return@RemoteLibrarySection Result.failure(
+                        IllegalStateException("Navidrome URL and username are required"),
+                    )
+                when (val health = NavidromeClient(config).health()) {
+                    is SourceHealth.Ok -> Result.success(Unit)
+                    is SourceHealth.Rejected -> Result.failure(Exception(health.reason))
+                    is SourceHealth.Unreachable -> Result.failure(Exception(health.reason))
+                }
+            },
+            onDisconnect = {
+                AppSettings.clearNavidrome()
+                onSourcesChanged()
+            },
+        )
+
         SettingsGroup(
             header = stringResource(R.string.source_matching),
             footer = stringResource(R.string.upgrade_length_slack_footer),
@@ -417,71 +414,6 @@ fun SourcesScreen(
         }
 
         Spacer(Modifier.height(32.dp))
-    }
-
-    if (showNavidromeDialog) {
-        AlertDialog(
-            onDismissRequest = { showNavidromeDialog = false },
-            title = { Text("Navidrome") },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = navidromeUrlInput,
-                        onValueChange = { navidromeUrlInput = it },
-                        label = { Text("Server URL") },
-                        placeholder = { Text("https://music.example.com") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = navidromeUsernameInput,
-                        onValueChange = { navidromeUsernameInput = it },
-                        label = { Text(stringResource(R.string.username)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = navidromePasswordInput,
-                        onValueChange = { navidromePasswordInput = it },
-                        label = { Text(stringResource(R.string.password)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Row {
-                        Text("Enabled")
-                        Spacer(Modifier.width(12.dp))
-                        Switch(
-                            checked = navidromeEnabledInput,
-                            onCheckedChange = { navidromeEnabledInput = it },
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        AppSettings.setNavidrome(
-                            url = navidromeUrlInput,
-                            username = navidromeUsernameInput,
-                            password = navidromePasswordInput,
-                            enabled = navidromeEnabledInput,
-                        )
-                        showNavidromeDialog = false
-                    },
-                    enabled = navidromeUrlInput.isNotBlank(),
-                ) {
-                    Text("Save")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showNavidromeDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-        )
     }
 
 }
@@ -507,13 +439,38 @@ private fun RemoteLibrarySection(
     onEdit: () -> Unit,
     onTest: suspend () -> Result<Unit>,
     onDisconnect: () -> Unit,
+    /** A short mark beside the title, such as "Lossless". */
+    badge: String? = null,
+    /** The on/off state, when this library has one. Null for WebDAV and SMB. */
+    enabled: Boolean? = null,
+    onToggle: ((Boolean) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var testing by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
     SettingsGroup(header = title, footer = description) {
-        SettingsRow(icon = icon, title = title, subtitle = subtitle, onClick = onEdit)
+        SettingsRow(
+            icon = icon,
+            title = title,
+            subtitle = subtitle,
+            badge = badge,
+            onClick = onEdit,
+            trailing = if (enabled != null && onToggle != null) {
+                {
+                    Switch(
+                        checked = enabled,
+                        onCheckedChange = onToggle,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                }
+            } else {
+                null
+            },
+        )
         if (configured) {
             RowDivider()
             SettingsRow(

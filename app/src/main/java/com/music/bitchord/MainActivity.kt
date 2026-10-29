@@ -587,6 +587,7 @@ private fun BitChordApp(
     var showLastfmLogin by remember { mutableStateOf(false) }
     var showWebDavEditor by remember { mutableStateOf(false) }
     var showSmbEditor by remember { mutableStateOf(false) }
+    var showNavidromeEditor by remember { mutableStateOf(false) }
     /**
      * Whether the download manager is open.
      *
@@ -2784,7 +2785,12 @@ private fun BitChordApp(
                                 onEditSource = { editingSource = it },
                                 onEditWebDav = { showWebDavEditor = true },
                                 onEditSmb = { showSmbEditor = true },
+                                onEditNavidrome = { showNavidromeEditor = true },
                                 onConfirmJioSaavn = { confirmJioSaavn = true },
+                                onSourcesChanged = {
+                                    viewModel.loadHome()
+                                    viewModel.loadExplore()
+                                },
                             )
                         } else if (pageRoute == AppRoute.WearOs) {
                             WearOsScreen(contentPadding = listPadding)
@@ -5130,6 +5136,62 @@ private fun BitChordApp(
                     showSmbEditor = false
                 },
                 onDismiss = { showSmbEditor = false },
+            )
+        }
+
+        if (showNavidromeEditor) {
+            BackHandler { showNavidromeEditor = false }
+            ServerEditorHost(
+                hazeState = hazeState,
+                title = stringResource(R.string.navidrome),
+                description = stringResource(R.string.navidrome_description),
+                fields = listOf(
+                    FieldConfig(
+                        initial = AppSettings.navidromeUrl.value,
+                        placeholder = stringResource(R.string.navidrome_server_url_hint),
+                        keyboardType = KeyboardType.Uri,
+                    ),
+                    FieldConfig(
+                        initial = AppSettings.navidromeUsername.value,
+                        placeholder = stringResource(R.string.username),
+                    ),
+                    FieldConfig(
+                        initial = AppSettings.navidromePassword.value,
+                        placeholder = stringResource(R.string.password),
+                        keyboardType = KeyboardType.Password,
+                        isPassword = true,
+                    ),
+                ),
+                canSubmit = { it[0].isNotBlank() && it[1].isNotBlank() },
+                testFailedRes = R.string.navidrome_test_failed,
+                onTest = { (url, username, password) ->
+                    val config = com.music.bitchord.data.sources.NavidromeConfig(
+                        url.trim(),
+                        username.trim(),
+                        password,
+                    )
+                    when (val health = com.music.bitchord.data.sources.NavidromeClient(config).health()) {
+                        is com.music.bitchord.data.sources.SourceHealth.Ok -> Result.success(Unit)
+                        is com.music.bitchord.data.sources.SourceHealth.Rejected ->
+                            Result.failure(Exception(health.reason))
+                        is com.music.bitchord.data.sources.SourceHealth.Unreachable ->
+                            Result.failure(Exception(health.reason))
+                    }
+                },
+                onSave = { (url, username, password) ->
+                    val enabling = AppSettings.navidromeUrl.value.isBlank() ||
+                        AppSettings.navidromeEnabled.value
+                    AppSettings.setNavidrome(
+                        url = url.trim(),
+                        username = username.trim(),
+                        password = password,
+                        enabled = enabling,
+                    )
+                    showNavidromeEditor = false
+                    viewModel.loadHome()
+                    viewModel.loadExplore()
+                },
+                onDismiss = { showNavidromeEditor = false },
             )
         }
 

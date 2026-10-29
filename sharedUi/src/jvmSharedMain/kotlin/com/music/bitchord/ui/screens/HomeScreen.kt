@@ -266,7 +266,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
                     viewType = recentsViewType,
                     onViewTypeToggle = onRecentsViewTypeToggle,
                 )
-            } else if (index == 0 && firstIsHero) {
+            } else if (index == 0 && firstIsHero && !shelf.compactCards) {
                 HeroShelf(
                     shelf = shelf,
                     onItemClick = openItem,

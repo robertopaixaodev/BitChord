@@ -120,6 +120,67 @@ class NavidromeClientTest {
     }
 
     @Test
+    fun `genres artists and songs-by-genre parse OpenSubsonic shapes`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok","version":"1.16.1",
+                      "genres":{"genre":[
+                        {"value":"Rock","songCount":42,"albumCount":7},
+                        {"name":"Jazz","songCount":9}
+                      ]}}}
+                    """.trimIndent(),
+                ),
+            )
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok","version":"1.16.1",
+                      "artists":{"index":[
+                        {"name":"A","artist":[
+                          {"id":"ar-1","name":"Artist","albumCount":2,"coverArt":"ar-1"}
+                        ]},
+                        {"name":"B","artist":[
+                          {"id":"ar-2","name":"Another","albumCount":1}
+                        ]}
+                      ]}}}
+                    """.trimIndent(),
+                ),
+            )
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok","version":"1.16.1",
+                      "songsByGenre":{"song":[
+                        {"id":"song-1","title":"Rock Song","artist":"Artist",
+                         "suffix":"flac","bitRate":1411}
+                      ]}}}
+                    """.trimIndent(),
+                ),
+            )
+            val client = NavidromeClient(config(server))
+
+            val genres = client.genres()
+            val artists = client.artists()
+            val songs = client.songsByGenre("Rock", 25)
+
+            assertEquals(listOf("Rock", "Jazz"), genres.map { it.displayName })
+            assertEquals(42, genres.first().songCount)
+            assertEquals(listOf("ar-1", "ar-2"), artists.map { it.id })
+            assertEquals("song-1", songs.single().id)
+            // The three requests are sequential; the last one is the genre call.
+            server.takeRequest()
+            server.takeRequest()
+            val url = server.takeRequest().requestUrl!!
+            assertEquals("/rest/getSongsByGenre.view", url.encodedPath)
+            assertEquals("Rock", url.queryParameter("genre"))
+            assertEquals("25", url.queryParameter("count"))
+        }
+    }
+
+    @Test
     fun `stream URL keeps the song id and asks for raw lossless`() {
         MockWebServer().use { server ->
             server.start()

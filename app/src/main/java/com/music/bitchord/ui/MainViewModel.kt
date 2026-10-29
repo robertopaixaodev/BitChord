@@ -84,6 +84,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import com.music.bitchord.data.sources.AddonSource
+import com.music.bitchord.data.sources.NavidromeSource
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.data.sources.SourceResolver
@@ -1573,6 +1574,59 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun fetchExplore() {
+        val youtubeEnabled = SourceRegistry.active().any { it.kind == SourceKind.YOUTUBE }
+        // The listener's own library answers first: its genres are the ones
+        // that describe the collection actually on this server, rather than
+        // YouTube's fixed mood grid. Artists are the fallback when the server
+        // reports no genres at all.
+        val navidrome = SourceRegistry.active()
+            .firstOrNull { it.kind == SourceKind.NAVIDROME } as? NavidromeSource
+        if (navidrome != null) {
+            val sections = withTimeoutOrNull(SOURCE_SEARCH_TIMEOUT_MS) {
+                val genres = navidrome.genres()
+                if (genres.isNotEmpty()) {
+                    listOf(
+                        MoodGenreSection(
+                            title = text(R.string.explore_genres),
+                            items = genres.map { genre ->
+                                MoodGenre(
+                                    title = genre.name,
+                                    browseId = NAVIDROME_GENRE_PREFIX + genre.name,
+                                    params = null,
+                                )
+                            },
+                        ),
+                    )
+                } else {
+                    val artists = navidrome.artists()
+                    if (artists.isEmpty()) {
+                        emptyList()
+                    } else {
+                        listOf(
+                            MoodGenreSection(
+                                title = text(R.string.explore_artists),
+                                items = artists.map { artist ->
+                                    MoodGenre(
+                                        title = artist.name,
+                                        browseId = NAVIDROME_ARTIST_PREFIX + artist.id,
+                                        params = null,
+                                        thumbnailUrl = artist.thumbnailUrl,
+                                    )
+                                },
+                            ),
+                        )
+                    }
+                }
+            }.orEmpty()
+            if (sections.isNotEmpty()) {
+                _explore.value = UiState.Success(sections)
+                return
+            }
+        }
+        if (!youtubeEnabled) {
+            _explore.value = UiState.Error(text(R.string.nothing_to_explore))
+            return
+        }
         val state = YtMusicRepository.moodAndGenres().fold(
             onSuccess = { sections ->
                 if (sections.isEmpty()) {
@@ -1621,6 +1675,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _selectedMoodGenre.value = item
         _moodGenreShelves.value = UiState.Loading
         viewModelScope.launch {
+            val navidrome = SourceRegistry.active()
+                .firstOrNull { it.kind == SourceKind.NAVIDROME } as? NavidromeSource
+            val navidromeSongs = when {
+                navidrome == null -> null
+                item.browseId.startsWith(NAVIDROME_GENRE_PREFIX) ->
+                    navidrome.songsByGenre(item.browseId.removePrefix(NAVIDROME_GENRE_PREFIX))
+                item.browseId.startsWith(NAVIDROME_ARTIST_PREFIX) -> navidrome.songsByArtist(item.title)
+                else -> null
+            }
+            if (navidromeSongs != null) {
+                _moodGenreShelves.value = if (navidromeSongs.isEmpty()) {
+                    UiState.Error(text(R.string.no_results))
+                } else {
+                    UiState.Success(
+                        listOf(
+                            HomeShelf(
+                                title = item.title,
+                                items = navidromeSongs.map { song ->
+                                    ShelfItem(
+                                        title = song.title,
+                                        subtitle = song.artist,
+                                        thumbnailUrl = song.thumbnailUrl,
+                                        videoId = song.videoId,
+                                        browseId = null,
+                                    )
+                                },
+                                compactCards = true,
+                            ),
+                        ),
+                    )
+                }
+                return@launch
+            }
             _moodGenreShelves.value = YtMusicRepository.moodGenreShelves(item.browseId, item.params).fold(
                 onSuccess = { shelves ->
                     if (shelves.isEmpty()) UiState.Error(text(R.string.nothing_to_explore))
@@ -1646,45 +1733,58 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun loadHome() {
         val identity = listenerKey()
         val generation = homeLoadGeneration.incrementAndGet()
+        // YouTube's feed is optional now. When it is off, the page is the
+        // listener's own library and nothing else: no skeleton waiting for a
+        // request that will not be made, and no error when it answers nothing.
+        val youtubeEnabled = SourceRegistry.active().any { it.kind == SourceKind.YOUTUBE }
         _home.value = UiState.Loading
         homeContinuation = null
         homeSeenTitles.clear()
         _homeLoadingMore.value = false
-        _homeRecentlyPlayedLoading.value = _signedIn.value
+        _homeRecentlyPlayedLoading.value = _signedIn.value && youtubeEnabled
         // The core feed plus one browse per supplement. Recently played is left
         // out: it has its own skeleton at the head of the page rather than the
         // one at the tail.
-        _homePendingShelves.value = 1 + YtMusicRepository.HOME_SUPPLEMENT_BROWSE_IDS.size
+        _homePendingShelves.value = if (youtubeEnabled) {
+            1 + YtMusicRepository.HOME_SUPPLEMENT_BROWSE_IDS.size
+        } else {
+            0
+        }
+        if (!youtubeEnabled && !AppSettings.navidromeEnabled.value) {
+            _home.value = UiState.Error(text(R.string.home_no_sources))
+        }
         viewModelScope.launch {
-            launch {
-                try {
-                    YtMusicRepository.home()
-                        .onSuccess { feed ->
-                            if (!isCurrentHomeLoad(identity, generation)) return@onSuccess
-                            homeContinuation = feed.continuation
-                            publishHomeShelves(feed.shelves)
-                        }
-                        .onFailure { failure ->
-                            if (isCurrentHomeLoad(identity, generation) && _home.value !is UiState.Success) {
-                                _home.value = UiState.Error(failure.friendly())
-                            }
-                        }
-                } finally {
-                    homeShelfRequestSettled(identity, generation)
-                }
-            }
-            if (_signedIn.value) {
+            if (youtubeEnabled) {
                 launch {
-                    YtMusicRepository.homeRecentlyPlayed()
-                        .onSuccess { shelf ->
-                            if (isCurrentHomeLoad(identity, generation)) {
-                                _homeRecentlyPlayedLoading.value = false
-                                shelf?.let { publishHomeShelves(listOf(it), prepend = true) }
+                    try {
+                        YtMusicRepository.home()
+                            .onSuccess { feed ->
+                                if (!isCurrentHomeLoad(identity, generation)) return@onSuccess
+                                homeContinuation = feed.continuation
+                                publishHomeShelves(feed.shelves)
                             }
-                        }
-                        .onFailure {
-                            if (isCurrentHomeLoad(identity, generation)) _homeRecentlyPlayedLoading.value = false
-                        }
+                            .onFailure { failure ->
+                                if (isCurrentHomeLoad(identity, generation) && _home.value !is UiState.Success) {
+                                    _home.value = UiState.Error(failure.friendly())
+                                }
+                            }
+                    } finally {
+                        homeShelfRequestSettled(identity, generation)
+                    }
+                }
+                if (_signedIn.value) {
+                    launch {
+                        YtMusicRepository.homeRecentlyPlayed()
+                            .onSuccess { shelf ->
+                                if (isCurrentHomeLoad(identity, generation)) {
+                                    _homeRecentlyPlayedLoading.value = false
+                                    shelf?.let { publishHomeShelves(listOf(it), prepend = true) }
+                                }
+                            }
+                            .onFailure {
+                                if (isCurrentHomeLoad(identity, generation)) _homeRecentlyPlayedLoading.value = false
+                            }
+                    }
                 }
             }
             // The listener's own library is the one feed YouTube cannot supply.
@@ -1693,42 +1793,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // shelf rather than holding the page up.
             if (AppSettings.navidromeEnabled.value) {
                 launch {
-                    val source = SourceRegistry.active()
-                        .firstOrNull { it.kind == SourceKind.NAVIDROME }
-                    val albums = source?.let {
-                        withTimeoutOrNull(HOME_ALBUM_TIMEOUT_MS) {
-                            it.getRecentAlbums(HOME_ALBUM_LIMIT)
+                    val shelf = navidromeHomeShelf()
+                    if (isCurrentHomeLoad(identity, generation)) {
+                        if (shelf != null) {
+                            publishHomeShelves(listOf(shelf), prepend = true)
+                        } else if (!youtubeEnabled && _home.value !is UiState.Success) {
+                            _home.value = UiState.Error(text(R.string.home_no_sources))
                         }
-                    }.orEmpty()
-                    if (isCurrentHomeLoad(identity, generation) && albums.isNotEmpty()) {
-                        val shelf = HomeShelf(
-                            title = text(R.string.home_recently_added),
-                            items = albums.map { album ->
-                                ShelfItem(
-                                    title = album.title,
-                                    subtitle = listOfNotNull(
-                                        album.artist,
-                                        album.year?.toString(),
-                                    ).joinToString(" · "),
-                                    thumbnailUrl = album.thumbnailUrl,
-                                    videoId = null,
-                                    browseId = null,
-                                )
-                            },
-                            subtitle = text(R.string.home_navidrome_shelf),
-                        )
-                        publishHomeShelves(listOf(shelf), prepend = true)
                     }
                 }
             }
-            YtMusicRepository.HOME_SUPPLEMENT_BROWSE_IDS.forEach { browseId ->
-                launch {
-                    try {
-                        YtMusicRepository.homeSupplement(browseId).onSuccess { shelves ->
-                            if (isCurrentHomeLoad(identity, generation)) publishHomeShelves(shelves)
+            if (youtubeEnabled) {
+                YtMusicRepository.HOME_SUPPLEMENT_BROWSE_IDS.forEach { browseId ->
+                    launch {
+                        try {
+                            YtMusicRepository.homeSupplement(browseId).onSuccess { shelves ->
+                                if (isCurrentHomeLoad(identity, generation)) publishHomeShelves(shelves)
+                            }
+                        } finally {
+                            homeShelfRequestSettled(identity, generation)
                         }
-                    } finally {
-                        homeShelfRequestSettled(identity, generation)
                     }
                 }
             }
@@ -1764,19 +1848,66 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (added.isNotEmpty()) _home.value = UiState.Success(existing + added)
     }
 
+    /**
+     * The listener's newest library releases as a Home shelf, or null when
+     * Navidrome is off, incomplete, slow, or empty.
+     */
+    private suspend fun navidromeHomeShelf(): HomeShelf? {
+        if (!AppSettings.navidromeEnabled.value) return null
+        val source = SourceRegistry.active().firstOrNull { it.kind == SourceKind.NAVIDROME }
+            ?: return null
+        val albums = withTimeoutOrNull(HOME_ALBUM_TIMEOUT_MS) {
+            source.getRecentAlbums(HOME_ALBUM_LIMIT)
+        }.orEmpty()
+        if (albums.isEmpty()) return null
+        return HomeShelf(
+            title = text(R.string.home_recently_added),
+            items = albums.map { album ->
+                ShelfItem(
+                    title = album.title,
+                    subtitle = listOfNotNull(
+                        album.artist,
+                        album.year?.toString(),
+                    ).joinToString(" · "),
+                    thumbnailUrl = album.thumbnailUrl,
+                    videoId = null,
+                    browseId = null,
+                )
+            },
+            subtitle = text(R.string.home_navidrome_shelf),
+            // The same ordinary cards as every other collection shelf, not
+            // the page's hero.
+            compactCards = true,
+        )
+    }
+
     /** Refreshes the core feed without blanking the current Play page first. */
     private suspend fun refreshHome(identity: String?) = coroutineScope {
-        val recent = if (_signedIn.value) async { YtMusicRepository.homeRecentlyPlayed() } else null
-        YtMusicRepository.home().onSuccess { feed ->
-            if (identity != listenerKey()) return@onSuccess
-            homeContinuation = feed.continuation
-            homeSeenTitles.clear()
-            val shelves = feed.shelves.withoutRepeatsOf(emptyList())
-                .filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
-            if (shelves.isNotEmpty()) _home.value = UiState.Success(shelves)
+        val youtubeEnabled = SourceRegistry.active().any { it.kind == SourceKind.YOUTUBE }
+        if (youtubeEnabled) {
+            val recent = if (_signedIn.value) async { YtMusicRepository.homeRecentlyPlayed() } else null
+            YtMusicRepository.home().onSuccess { feed ->
+                if (identity != listenerKey()) return@onSuccess
+                homeContinuation = feed.continuation
+                homeSeenTitles.clear()
+                val shelves = feed.shelves.withoutRepeatsOf(emptyList())
+                    .filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
+                if (shelves.isNotEmpty()) _home.value = UiState.Success(shelves)
+            }
+            recent?.await()?.onSuccess { shelf ->
+                if (identity == listenerKey()) shelf?.let { publishHomeShelves(listOf(it), prepend = true) }
+            }
         }
-        recent?.await()?.onSuccess { shelf ->
-            if (identity == listenerKey()) shelf?.let { publishHomeShelves(listOf(it), prepend = true) }
+        val libraryShelf = navidromeHomeShelf()
+        if (identity == listenerKey()) {
+            if (libraryShelf != null) {
+                val without = (_home.value as? UiState.Success)?.data.orEmpty().filterNot {
+                    it.title.equals(libraryShelf.title, ignoreCase = true)
+                }
+                _home.value = UiState.Success(listOf(libraryShelf) + without)
+            } else if (!youtubeEnabled && _home.value !is UiState.Success) {
+                _home.value = UiState.Error(text(R.string.home_no_sources))
+            }
         }
     }
 
@@ -2177,12 +2308,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         searchRequests
             .collectLatest { request ->
                 val key = cacheKey(request.query, request.filter)
+                val youtubeEnabled = SourceRegistry.active().any { it.kind == SourceKind.YOUTUBE }
                 // Something to look at immediately: the exact answer if this
                 // query has been run before, otherwise the closest earlier
-                // one. Only fall back to a spinner with neither.
+                // one. Only fall back to a spinner with neither. With YouTube
+                // switched off, the cache is ignored: it may still hold rows
+                // from before that choice, and stale YouTube results are the
+                // one thing the caller asked not to see.
                 val exact = searchCache.get(key)
-                val cached = exact?.rows ?: prefixMatch(request.query, request.filter)
+                val cached = if (youtubeEnabled) {
+                    exact?.rows ?: prefixMatch(request.query, request.filter)
+                } else {
+                    null
+                }
                 _results.value = cached?.let { UiState.Success(it) } ?: UiState.Loading
+                if (!youtubeEnabled) {
+                    // The library is the whole search. No YouTube page is
+                    // requested, and no continuation exists to load.
+                    val (above, below) = sourceResults(request.query, request.filter)
+                    if (request.requestId != newestRequestId.get()) return@collectLatest
+                    val rows = (above + below).distinctBy(::searchResultKey)
+                    _results.value = if (rows.isEmpty()) {
+                        UiState.Error(text(R.string.no_results))
+                    } else {
+                        searchSession = SearchSession(key, request.requestId, request.filter, null)
+                        UiState.Success(rows)
+                    }
+                    return@collectLatest
+                }
                 // An explicit submit still has to reach the server even when
                 // an anonymous lookup cached the same query: that call is what
                 // records it in the account's history.
@@ -2519,6 +2672,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
          * page nothing rather than hold the first YouTube shelf behind it.
          */
         private const val HOME_ALBUM_TIMEOUT_MS = 4000L
+
+        /** Synthetic category ids for Navidrome's own Explore grid. */
+        private const val NAVIDROME_GENRE_PREFIX = "navidrome:genre:"
+        private const val NAVIDROME_ARTIST_PREFIX = "navidrome:artist:"
 
         /**
          * What a page with an empty listing says.

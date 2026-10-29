@@ -29,6 +29,8 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.MoreVert
@@ -340,6 +342,12 @@ fun SongRow(
      */
     showSourceQuality: Boolean = false,
     /**
+     * Marks where this row came from. Search passes true so a YouTube result
+     * wears its own mark; rows from a configured library wear theirs wherever
+     * they appear.
+     */
+    showOrigin: Boolean = false,
+    /**
      * A control of the page's own, drawn just ahead of the ⋮ — the Cached
      * songs folder's per-track download button. Null on every other list.
      */
@@ -364,6 +372,7 @@ fun SongRow(
             searchPlayingStyle = searchPlayingStyle,
             selected = selected,
             showSourceQuality = showSourceQuality,
+            showOrigin = showOrigin,
             trailing = trailing,
         )
     }
@@ -505,6 +514,7 @@ private fun SongRowContent(
     searchPlayingStyle: Boolean = false,
     selected: Boolean = false,
     showSourceQuality: Boolean = false,
+    showOrigin: Boolean = false,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val titleColor by animateColorAsState(
@@ -577,12 +587,19 @@ private fun SongRowContent(
         Spacer(Modifier.width(if (trackNumber == null) 14.dp else PAGE_GUTTER))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // A row that came from the listener's own server says so. The
-                // icon outranks nothing else in the row: it sits ahead of the
-                // title, where the explicit badge already lives.
-                if (song.sourceOrigin == SongOrigin.NAVIDROME) {
+                // Where this row came from, when it is worth saying. A
+                // Navidrome row is marked everywhere; search also marks the
+                // YouTube rows, so a mixed list never leaves the listener
+                // guessing which catalogue answered.
+                val originIcon = when (song.sourceOrigin) {
+                    SongOrigin.NAVIDROME -> Icons.Rounded.Dns
+                    SongOrigin.JIOSAAVN -> Icons.Rounded.GraphicEq
+                    SongOrigin.ADDON, SongOrigin.MODULE -> Icons.Rounded.Extension
+                    null -> if (showOrigin) Icons.Rounded.PlayCircle else null
+                }
+                if (originIcon != null) {
                     Icon(
-                        imageVector = Icons.Rounded.Dns,
+                        imageVector = originIcon,
                         contentDescription = null,
                         tint = subtitleColor,
                         modifier = Modifier.size(14.dp),

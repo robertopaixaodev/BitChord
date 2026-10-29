@@ -1374,4 +1374,14 @@
     <string name="source_badge_lossless">Lossless</string>
     <string name="home_recently_added">Recently added</string>
     <string name="home_navidrome_shelf">From your Navidrome library</string>
+    <string name="navidrome">Navidrome</string>
+    <string name="navidrome_subtitle">Your Subsonic music library</string>
+    <string name="navidrome_not_configured">Not configured</string>
+    <string name="navidrome_description">Point BitChord at your Navidrome or Subsonic server to search and play the music you keep there, lossless included.</string>
+    <string name="navidrome_server_url_hint">https://music.example.com</string>
+    <string name="navidrome_disconnect">Disconnect</string>
+    <string name="navidrome_test_failed">Couldn’t reach it: %1$s</string>
+    <string name="home_no_sources">Nothing to show yet. Enable a source in Sources, or save some music.</string>
+    <string name="explore_genres">Genres</string>
+    <string name="explore_artists">Artists</string>
 </resources>

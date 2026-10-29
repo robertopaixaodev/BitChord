@@ -72,6 +72,7 @@ import com.music.bitchord.data.model.SearchFilter
 import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.model.SearchResult
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.model.SongOrigin
 import com.music.bitchord.data.model.playingRowMatcher
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.data.model.SearchHistoryEntity
@@ -201,6 +202,9 @@ fun SearchScreen(
             if (!loadingMore && total > 0 && lastVisible >= total - 4) onLoadMore()
         }
     }
+    // Section labels are resources, so they are resolved here rather than in
+    // the LazyListScope builder, which is not a composable context.
+    val resultSections = (results as? UiState.Success)?.let { searchSections(it.data, filter) }.orEmpty()
     Column(modifier = modifier.fillMaxSize()) {
         // Search field and filter tabs stay fixed at the top, outside the
         // scrolling list, so they're always reachable rather than scrolling
@@ -315,7 +319,12 @@ fun SearchScreen(
                         } }
                     val isCurrentRow = playingRowMatcher(tracks, currentSong)
                     val topResult = results.data.filterIsInstance<SearchResult.TopTrack>().firstOrNull()
-                    if (filter == SearchFilter.ALL && topResult != null) {
+                    // A library answer outranks YouTube's promoted card: with
+                    // rows of the listener's own, the page opens on those
+                    // rather than on a YouTube song that would have to be
+                    // scrolled past.
+                    val hasLibraryRows = tracks.any { it.sourceOrigin == SongOrigin.NAVIDROME }
+                    if (filter == SearchFilter.ALL && topResult != null && !hasLibraryRows) {
                         item(key = "search:top-result:${topResult.song.videoId}") {
                             SwipeToQueueBox(
                                 onSwipeToQueue = { onSongSwipe(topResult.song) },
@@ -330,7 +339,7 @@ fun SearchScreen(
                             }
                         }
                     }
-                    searchSections(results.data, filter).forEach { section ->
+                    resultSections.forEach { section ->
                         section.title?.let { title ->
                             item(key = "search-section:$title") {
                                 Text(
@@ -369,6 +378,7 @@ fun SearchScreen(
                                     isPlaying = isPlaying && isCurrentRow(row.song),
                                     searchPlayingStyle = true,
                                     activeTint = PlayingAccent,
+                                    showOrigin = true,
                                 )
                                 is SearchResult.Browse -> BrowseRow(
                                     item = row.item,
@@ -400,16 +410,53 @@ fun SearchScreen(
 
 private data class SearchSection(val title: String?, val rows: List<SearchResult>)
 
-/** The unfiltered page is useful only when its mixed result types are readable at a glance. */
+/**
+ * The unfiltered page is useful only when its mixed result types are readable
+ * at a glance. Tracks are split by origin so the listener's own library is
+ * unmistakably the first answer, with YouTube's catalogue below it.
+ *
+ * Albums, artists and playlists are YouTube-only, and each filter keeps just
+ * the type it names. That drops the podcasts and unrelated playlists YouTube
+ * mixes into those pages, which are not what the tab promised.
+ */
+@Composable
 private fun searchSections(rows: List<SearchResult>, filter: SearchFilter): List<SearchSection> {
-    if (filter != SearchFilter.ALL) return listOf(SearchSection(null, rows))
-    return listOf(
-        SearchSection("Songs", rows.filterIsInstance<SearchResult.Track>()),
-        SearchSection("Artists", rows.filterIsInstance<SearchResult.Browse>().filter { it.item.type == BrowseType.ARTIST }),
-        SearchSection("Albums", rows.filterIsInstance<SearchResult.Browse>().filter { it.item.type == BrowseType.ALBUM }),
-        SearchSection("Playlists", rows.filterIsInstance<SearchResult.Browse>().filter { it.item.type == BrowseType.PLAYLIST }),
-        SearchSection("More", rows.filterIsInstance<SearchResult.Browse>().filter { it.item.type == BrowseType.OTHER }),
-    ).filter { it.rows.isNotEmpty() }
+    if (filter != SearchFilter.ALL && filter != SearchFilter.SONGS) {
+        val browse = rows.filterIsInstance<SearchResult.Browse>()
+        val filtered = when (filter) {
+            SearchFilter.ALBUMS -> browse.filter { it.item.type == BrowseType.ALBUM }
+            SearchFilter.ARTISTS -> browse.filter { it.item.type == BrowseType.ARTIST }
+            SearchFilter.PLAYLISTS -> browse.filter { it.item.type == BrowseType.PLAYLIST }
+            else -> rows
+        }
+        return listOf(SearchSection(null, filtered))
+    }
+
+    val tracks = rows.filterIsInstance<SearchResult.Track>()
+    val library = tracks.filter { it.song.sourceOrigin == SongOrigin.NAVIDROME }
+    val youtube = tracks.filter { it.song.sourceOrigin == null }
+    val other = tracks.filter {
+        it.song.sourceOrigin != null && it.song.sourceOrigin != SongOrigin.NAVIDROME
+    }
+
+    val sections = mutableListOf<SearchSection>()
+    if (library.isNotEmpty()) {
+        sections += SearchSection(stringResource(Res.string.search_section_library), library)
+    }
+    if (youtube.isNotEmpty()) {
+        sections += SearchSection(stringResource(Res.string.search_section_youtube), youtube)
+    }
+    if (other.isNotEmpty()) {
+        sections += SearchSection(stringResource(Res.string.search_section_other), other)
+    }
+    if (filter == SearchFilter.ALL) {
+        val browse = rows.filterIsInstance<SearchResult.Browse>()
+        sections += SearchSection("Artists", browse.filter { it.item.type == BrowseType.ARTIST })
+        sections += SearchSection("Albums", browse.filter { it.item.type == BrowseType.ALBUM })
+        sections += SearchSection("Playlists", browse.filter { it.item.type == BrowseType.PLAYLIST })
+        sections += SearchSection("More", browse.filter { it.item.type == BrowseType.OTHER })
+    }
+    return sections.filter { it.rows.isNotEmpty() }
 }
 
 /**

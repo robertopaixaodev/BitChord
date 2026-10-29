@@ -3,6 +3,7 @@ package com.music.bitchord.data.sources
 import android.util.Log
 import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.model.SongOrigin
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.sources.module.ModuleManager
 import com.music.bitchord.data.sources.module.ModuleSearchResult
@@ -180,6 +181,7 @@ class ModuleSource(
                 durationText = track.duration.takeIf { it > 0 }
                     ?.let { "${it / 60}:${"%02d".format(Locale.ROOT, it % 60)}" },
                 sourceQuality = rowTier(track),
+                sourceOrigin = SongOrigin.MODULE,
             )
         }
     }

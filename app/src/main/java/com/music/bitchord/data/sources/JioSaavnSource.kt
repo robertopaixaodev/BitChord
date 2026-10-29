@@ -4,6 +4,7 @@ import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.jiosaavn.JioSaavnService
 import com.music.bitchord.data.jiosaavn.prioritizeExplicit
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.model.SongOrigin
 
 private const val TAG = "BitChord"
 
@@ -60,6 +61,7 @@ class JioSaavnSource(
                     String.format("%d:%02d", m, s)
                 },
                 sourceQuality = "HIGH",
+                sourceOrigin = SongOrigin.JIOSAAVN,
                 isExplicit = raw.isExplicit,
             )
         }
