@@ -28,6 +28,15 @@ data class SourceArtist(
     val thumbnailUrl: String? = null,
 )
 
+/** The full artist profile a library page needs. */
+data class SourceArtistDetail(
+    val name: String,
+    val biography: String? = null,
+    val imageUrl: String? = null,
+    val albums: List<Album> = emptyList(),
+    val songs: List<Song> = emptyList(),
+)
+
 /**
  * A Navidrome/Subsonic library.
  *
@@ -108,7 +117,15 @@ class NavidromeSource(
                     thumbnailUrl = artist.coverArt?.let(client::coverUrl),
                 )
             }.filter { it.name.isNotBlank() }
-                .distinctBy { it.name.lowercase().ifBlank { it.id } }
+                .groupBy { it.name.lowercase() }
+                .map { (_, sameName) ->
+                    val first = sameName.first()
+                    first.copy(
+                        albumCount = sameName.mapNotNull { it.albumCount }
+                            .takeIf { it.isNotEmpty() }
+                            ?.sum(),
+                    )
+                }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -130,6 +147,23 @@ class NavidromeSource(
                 emptyList()
             }
         }
+
+    /**
+     * The cover for an Explore genre: the artwork of the artist with the most
+     * tracks in it. A library with one dominant artist therefore shows that
+     * artist's sleeve rather than an arbitrary first track.
+     */
+    suspend fun genreCover(genre: String): String? = withContext(Dispatchers.IO) {
+        if (genre.isBlank()) return@withContext null
+        val songs = runCatching { client.songsByGenre(genre, 100) }.getOrDefault(emptyList())
+        val dominant = songs
+            .filter { !it.artist.isNullOrBlank() }
+            .groupBy { it.artist.orEmpty().lowercase() }
+            .maxByOrNull { it.value.size }
+            ?.value
+            ?.firstOrNull()
+        dominant?.coverArt?.let(client::coverUrl)
+    }
 
     /**
      * Tracks credited to [artist].
@@ -224,7 +258,15 @@ class NavidromeSource(
                         thumbnailUrl = artist.coverArt?.let(client::coverUrl),
                     )
                 }.filter { it.name.isNotBlank() }
-                    .distinctBy { it.name.lowercase().ifBlank { it.id } }
+                    .groupBy { it.name.lowercase() }
+                    .map { (_, sameName) ->
+                        val first = sameName.first()
+                        first.copy(
+                            albumCount = sameName.mapNotNull { it.albumCount }
+                                .takeIf { it.isNotEmpty() }
+                                ?.sum(),
+                        )
+                    }
                 if (direct.isNotEmpty()) return@withContext direct.take(limit)
                 // `search3` often reports no artists for an album title (the
                 // canonical "the Eminem show" case). The album it did return
@@ -257,6 +299,44 @@ class NavidromeSource(
             TrackLog.w(TAG, "Navidrome album tracks failed for '$albumId': ${e.message}")
             emptyList()
         }
+    }
+
+    /**
+     * The artist page's data: biography/image from `getArtistInfo2`, albums
+     * from `getArtist`, and a popular list from the same catalogue search the
+     * artist tab uses. Missing pieces are simply absent rather than failing the
+     * whole page.
+     */
+    suspend fun artistDetail(
+        artistId: String,
+        name: String,
+        songLimit: Int = 20,
+    ): SourceArtistDetail = withContext(Dispatchers.IO) {
+        val artist = runCatching { client.artistDetail(artistId) }.getOrNull()
+        val info = runCatching { client.artistInfo(artistId) }.getOrNull()
+        val albums = artist?.album.orEmpty().map { row ->
+            Album(
+                id = row.id,
+                title = row.name.ifBlank { "Unknown Album" },
+                artist = row.artist?.takeIf { it.isNotBlank() } ?: name,
+                thumbnailUrl = row.coverArt?.let(client::coverUrl),
+                year = row.year,
+                songCount = row.songCount,
+            )
+        }.ifEmpty {
+            searchAlbums(name, 50).filter { it.artist.equals(name, ignoreCase = true) }
+        }
+        val imageUrl = info?.largeImageUrl?.takeIf { it.isNotBlank() }
+            ?: info?.mediumImageUrl?.takeIf { it.isNotBlank() }
+            ?: info?.smallImageUrl?.takeIf { it.isNotBlank() }
+            ?: artist?.coverArt?.let(client::coverUrl)
+        SourceArtistDetail(
+            name = artist?.name?.takeIf { it.isNotBlank() } ?: name,
+            biography = info?.biography?.takeIf { it.isNotBlank() },
+            imageUrl = imageUrl,
+            albums = albums,
+            songs = songsByArtist(name, songLimit),
+        )
     }
 
     override suspend fun stream(trackId: String, request: StreamRequest): SourceStream? {

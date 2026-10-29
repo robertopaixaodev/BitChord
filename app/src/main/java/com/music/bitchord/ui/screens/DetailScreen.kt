@@ -410,6 +410,26 @@ fun DetailScreen(
         keyColors = appleArt?.keyColors(),
     )
 
+    // The library artist page has its own vertical profile. YouTube's page
+    // below keeps its existing layout because its sections are playlist-shaped;
+    // Navidrome's are albums and a track list, which read better stacked.
+    if (page.libraryArtist && isArtist && activeShelf == null) {
+        LibraryArtistPage(
+            page = page,
+            palette = palette,
+            listState = listState,
+            contentPadding = contentPadding,
+            currentSong = currentSong,
+            isPlaying = isPlaying,
+            onSongClick = onSongClick,
+            onShuffle = onShuffle,
+            onSongLongPress = onSongLongPress,
+            onSectionItemClick = onSectionItemClick,
+            onSectionItemLongPress = onSectionItemLongPress,
+        )
+        return
+    }
+
     // Narrowing the running order in place — the release equivalent of the
     // filter box on the Local Music tab, and the one thing a long track list
     // needs that scrolling can't give it. [searching] says whether it is open;
@@ -867,6 +887,204 @@ fun DetailScreen(
     )
 }
 }
+}
+
+/**
+ * A Navidrome artist, laid out as a vertical profile rather than YouTube's
+ * sideways carousels: photo and name, actions, about, popular tracks, then the
+ * discography. Everything that is a track is playable from here.
+ */
+@Composable
+private fun LibraryArtistPage(
+    page: DetailPage,
+    palette: ArtworkPalette,
+    listState: LazyListState,
+    contentPadding: PaddingValues,
+    currentSong: Song?,
+    isPlaying: Boolean,
+    onSongClick: (List<Song>, Int) -> Unit,
+    onShuffle: (List<Song>) -> Unit,
+    onSongLongPress: (Song) -> Unit,
+    onSectionItemClick: (ShelfItem) -> Unit,
+    onSectionItemLongPress: ((ShelfItem) -> Unit)?,
+) {
+    val songs = (page.songs as? UiState.Success)?.data.orEmpty()
+    val albums = remember(page.sections) {
+        page.sections.flatMap { it.items }.distinctBy { it.browseId ?: it.title }
+    }
+    var favorite by rememberSaveable(page.browseId) { mutableStateOf(false) }
+    val isCurrentRow = playingRowMatcher(songs, currentSong)
+
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
+    ) {
+        item(key = "library-artist-header") {
+            Box(Modifier.fillMaxWidth().height(320.dp)) {
+                AsyncImage(
+                    model = page.thumbnailUrl.artworkAt(HEADER_ART_PX),
+                    contentDescription = page.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, palette.wash.copy(alpha = 0.95f)),
+                            ),
+                        ),
+                )
+                Column(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(horizontal = PAGE_GUTTER)
+                        .padding(bottom = 14.dp),
+                ) {
+                    Text(
+                        text = page.title,
+                        style = MaterialTheme.typography.displayLarge,
+                        color = palette.onBackground,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (page.subtitle.isNotBlank()) {
+                        Text(
+                            text = page.subtitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = palette.onBackgroundVariant,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+        }
+
+        item(key = "library-artist-actions") {
+            Spacer(Modifier.height(16.dp))
+            ActionRow(
+                onPlay = { if (songs.isNotEmpty()) onSongClick(songs, 0) },
+                onShuffle = { if (songs.isNotEmpty()) onShuffle(songs) },
+                subscription = SubscriptionState(channelId = "", subscribed = favorite),
+                onToggleSubscription = { favorite = !favorite },
+                bottomSpace = 10.dp,
+                playColor = palette.accent,
+            )
+        }
+
+        item(key = "library-artist-about-heading") {
+            SectionHeading(
+                title = stringResource(R.string.about_artist),
+                palette = palette,
+                horizontalPadding = ARTIST_CONTENT_GUTTER,
+            )
+        }
+        item(key = "library-artist-about") {
+            Text(
+                text = page.description?.takeIf { it.isNotBlank() }
+                    ?: stringResource(R.string.artist_bio_placeholder),
+                style = MaterialTheme.typography.bodyLarge,
+                color = palette.onBackgroundVariant,
+                modifier = Modifier
+                    .padding(horizontal = ARTIST_CONTENT_GUTTER)
+                    .padding(bottom = 18.dp),
+            )
+        }
+
+        when (val state = page.songs) {
+            is UiState.Loading -> detailSkeleton(isArtist = true)
+            is UiState.Error -> item(key = "library-artist-error") {
+                MessageState(state.message)
+            }
+            is UiState.Success -> {
+                item(key = "library-artist-popular-heading") {
+                    SectionHeading(
+                        title = stringResource(R.string.popular),
+                        palette = palette,
+                        horizontalPadding = ARTIST_CONTENT_GUTTER,
+                    )
+                }
+                itemsIndexed(
+                    items = state.data,
+                    key = { _, song -> "artist-popular-${song.videoId}" },
+                ) { index, song ->
+                    SongRow(
+                        song = song,
+                        onClick = { onSongClick(state.data, index) },
+                        onLongPress = { onSongLongPress(song) },
+                        trackNumber = index + 1,
+                        rowBackground = Color.Transparent,
+                        subtitleColor = palette.onBackgroundVariant,
+                        activeTint = palette.accent,
+                        isCurrent = isCurrentRow(song),
+                        isPlaying = isCurrentRow(song) && isPlaying,
+                    )
+                    if (index < state.data.lastIndex) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = PAGE_GUTTER),
+                            thickness = 0.5.dp,
+                            color = palette.divider,
+                        )
+                    }
+                }
+            }
+        }
+
+        if (albums.isNotEmpty()) {
+            item(key = "library-artist-discography-heading") {
+                SectionHeading(
+                    title = stringResource(R.string.discography),
+                    palette = palette,
+                    horizontalPadding = ARTIST_CONTENT_GUTTER,
+                )
+            }
+            items(albums, key = { "artist-album-${it.browseId ?: it.title}" }) { album ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSectionItemClick(album) }
+                        .padding(horizontal = ARTIST_CONTENT_GUTTER, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AsyncImage(
+                        model = album.thumbnailUrl.artworkAt(CARD_ART_PX),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(58.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.elevated),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = album.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = palette.onBackground,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (album.subtitle.isNotBlank()) {
+                            Text(
+                                text = album.subtitle,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = palette.onBackgroundVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = ARTIST_CONTENT_GUTTER + 70.dp),
+                    thickness = 0.5.dp,
+                    color = palette.divider,
+                )
+            }
+        }
+    }
 }
 
 /**

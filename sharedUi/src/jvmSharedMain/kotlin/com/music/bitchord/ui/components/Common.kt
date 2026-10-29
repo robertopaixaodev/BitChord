@@ -28,7 +28,6 @@ import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.DownloadDone
-import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.PlayCircle
@@ -593,12 +592,20 @@ private fun SongRowContent(
                 // YouTube rows, so a mixed list never leaves the listener
                 // guessing which catalogue answered.
                 val originIcon = when (song.sourceOrigin) {
-                    SongOrigin.NAVIDROME -> Icons.Rounded.Dns
+                    SongOrigin.NAVIDROME -> null
                     SongOrigin.JIOSAAVN -> Icons.Rounded.GraphicEq
                     SongOrigin.ADDON, SongOrigin.MODULE -> Icons.Rounded.Extension
                     null -> if (showOrigin) Icons.Rounded.PlayCircle else null
                 }
-                if (originIcon != null) {
+                if (song.sourceOrigin == SongOrigin.NAVIDROME) {
+                    Icon(
+                        painter = painterResource(Res.drawable.ic_navidrome_light),
+                        contentDescription = null,
+                        tint = subtitleColor,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                } else if (originIcon != null) {
                     Icon(
                         imageVector = originIcon,
                         contentDescription = null,

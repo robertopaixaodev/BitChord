@@ -156,7 +156,7 @@
     <string name="retry">Yeniden dene</string>
     <string name="saved_to_youtube_music">YouTube Music\'e kaydedildi</string>
     <string name="search">Ara</string>
-    <string name="search_empty">YouTube Music\'te milyonlarca şarkı arayın.</string>
+    <string name="search_empty">Search your music.</string>
     <string name="search_hint">Sanatçılar, Şarkılar, Sözler ve Daha Fazlası</string>
     <string name="selected">Seçildi</string>
     <string name="share">Paylaş</string>
@@ -205,4 +205,5 @@
     <string name="search_section_other">Other sources</string>
     <string name="connect_sources_title">Connect your music sources</string>
     <string name="connect_sources_action">Open Sources</string>
+    <string name="genre_empty">No tracks in this genre.</string>
 </resources>

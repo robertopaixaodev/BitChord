@@ -260,7 +260,6 @@ import com.music.bitchord.ui.components.TopBarAccountButton
 import com.music.bitchord.ui.screens.SegmentedControl
 import com.music.bitchord.ui.components.SearchField
 import com.music.bitchord.sharedui.resources.Res as SharedRes
-import com.music.bitchord.sharedui.resources.search_hint
 import com.music.bitchord.sharedui.resources.search_addons_hint
 import com.music.bitchord.sharedui.resources.search_library_hint
 import com.music.bitchord.ui.components.TopBarDownloadButton
@@ -3127,6 +3126,7 @@ private fun BitChordApp(
                                     title = category.title,
                                     state = moodGenreShelves,
                                     listState = moodGenreListState,
+                                    vertical = category.isLibrary,
                                     onItemClick = { item ->
                                         item.videoId?.let { videoId ->
                                             playRadio(
@@ -3311,6 +3311,16 @@ private fun BitChordApp(
                                 libraryResults = libraryResults,
                                 searchingAddons = searchSource == SearchSource.ADDONS,
                                 addonResults = addonResults,
+                                searchPlaceholder = when (searchSource) {
+                                    SearchSource.NAVIDROME -> stringResource(R.string.search_navidrome_hint)
+                                    SearchSource.YOUTUBE -> stringResource(R.string.search_youtube_hint)
+                                    else -> null
+                                },
+                                searchEmptyHint = when (searchSource) {
+                                    SearchSource.NAVIDROME -> stringResource(R.string.search_navidrome_empty)
+                                    SearchSource.YOUTUBE -> stringResource(R.string.search_youtube_empty)
+                                    else -> null
+                                },
                                 addonHistory = viewModel.addonSearchHistory.collectAsStateWithLifecycle().value,
                                 onAddonHistoryClick = { term ->
                                     viewModel.onQueryChange(term)
@@ -3511,15 +3521,18 @@ private fun BitChordApp(
                                 onQueryChange = viewModel::onQueryChange,
                                 onSubmit = viewModel::submitSearch,
                                 focusRequester = searchFieldFocus,
-                                placeholder = org.jetbrains.compose.resources.stringResource(
-                                    if (searchSource == SearchSource.LIBRARY) {
-                                        SharedRes.string.search_library_hint
-                                    } else if (searchSource == SearchSource.ADDONS) {
-                                        SharedRes.string.search_addons_hint
-                                    } else {
-                                        SharedRes.string.search_hint
-                                    },
-                                ),
+                                placeholder = when (searchSource) {
+                                    SearchSource.LIBRARY ->
+                                        org.jetbrains.compose.resources.stringResource(
+                                            SharedRes.string.search_library_hint,
+                                        )
+                                    SearchSource.ADDONS ->
+                                        org.jetbrains.compose.resources.stringResource(
+                                            SharedRes.string.search_addons_hint,
+                                        )
+                                    SearchSource.NAVIDROME -> stringResource(R.string.search_navidrome_hint)
+                                    SearchSource.YOUTUBE -> stringResource(R.string.search_youtube_hint)
+                                },
                             )
                         }
                     } else null,

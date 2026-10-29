@@ -1598,6 +1598,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                     title = genre.name,
                                     browseId = NAVIDROME_GENRE_PREFIX + genre.name,
                                     params = null,
+                                    isLibrary = true,
                                 )
                             },
                         ),
@@ -1616,6 +1617,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                         browseId = NAVIDROME_ARTIST_PREFIX + artist.id,
                                         params = null,
                                         thumbnailUrl = artist.thumbnailUrl,
+                                        isLibrary = true,
                                     )
                                 },
                             ),
@@ -1625,6 +1627,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }.orEmpty()
             if (sections.isNotEmpty()) {
                 _explore.value = UiState.Success(sections)
+                loadNavidromeGenreArtwork(sections)
                 return
             }
         }
@@ -1670,6 +1673,42 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 }
                             })
                         })
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Fills each Navidrome genre card with the sleeve of its dominant artist,
+     * a few at a time so a library with many genres does not open a burst of
+     * connections.
+     */
+    private fun loadNavidromeGenreArtwork(sections: List<MoodGenreSection>) {
+        val genres = sections.flatMap(MoodGenreSection::items)
+            .filter { it.browseId.startsWith(NAVIDROME_GENRE_PREFIX) }
+        if (genres.isEmpty()) return
+        viewModelScope.launch {
+            val source = navidromeSource() ?: return@launch
+            val limiter = Semaphore(4)
+            coroutineScope {
+                genres.forEach { item ->
+                    launch {
+                        val cover = limiter.withPermit {
+                            source.genreCover(item.browseId.removePrefix(NAVIDROME_GENRE_PREFIX))
+                        } ?: return@launch
+                        val current = (_explore.value as? UiState.Success)?.data ?: return@launch
+                        _explore.value = UiState.Success(
+                            current.map { section ->
+                                section.copy(items = section.items.map { genre ->
+                                    if (genre.browseId == item.browseId) {
+                                        genre.copy(thumbnailUrl = cover)
+                                    } else {
+                                        genre
+                                    }
+                                })
+                            },
+                        )
                     }
                 }
             }
@@ -1883,9 +1922,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             Triple(recent.await(), frequent.await(), random.await())
         }
-        val shown = mutableSetOf<String>()
         fun shelf(title: String, albums: List<Album>): HomeShelf? {
-            val items = albums.filter { shown.add(it.id) }.map { album ->
+            val items = albums.distinctBy { it.id }.map { album ->
                 ShelfItem(
                     title = album.title,
                     subtitle = listOfNotNull(
@@ -1908,10 +1946,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 compactCards = true,
             )
         }
+        val fallback = listOf(recent, frequent, random).firstOrNull { it.isNotEmpty() }.orEmpty()
+        val recentShelf = recent.ifEmpty { fallback }
+        val frequentShelf = frequent.ifEmpty { fallback }
+        val randomShelf = random.ifEmpty { fallback }
         return listOfNotNull(
-            shelf(text(R.string.home_recently_added), recent),
-            shelf(text(R.string.home_most_played), frequent),
-            shelf(text(R.string.home_random), random),
+            shelf(text(R.string.home_recently_added), recentShelf),
+            shelf(text(R.string.home_most_played), frequentShelf),
+            shelf(text(R.string.home_random), randomShelf),
         )
     }
 
@@ -2475,6 +2517,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             thumbnailUrl = thumbnailUrl,
             type = BrowseType.ARTIST,
             origin = SongOrigin.NAVIDROME,
+            albumCount = albumCount,
         ),
     )
 
@@ -2804,6 +2847,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         thumbnailUrl: String?,
         type: BrowseType,
     ) {
+        val isArtist = type == BrowseType.ARTIST
         _detailStack.value += DetailPage(
             browseId = browseId,
             title = title,
@@ -2811,24 +2855,47 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             thumbnailUrl = thumbnailUrl,
             songs = UiState.Loading,
             type = type,
+            libraryArtist = isArtist,
         )
         viewModelScope.launch {
             val source = navidromeSource()
+            val detail = if (source == null || !isArtist) {
+                null
+            } else {
+                source.artistDetail(browseId.removePrefix(NAVIDROME_ARTIST_PREFIX), title)
+            }
             val songs = when {
                 source == null -> emptyList()
-                type == BrowseType.ALBUM ->
-                    source.albumSongs(browseId.removePrefix(NAVIDROME_ALBUM_PREFIX))
-                        .map { it.copy(albumName = it.albumName ?: title) }
-                else -> source.songsByArtist(title)
+                isArtist -> detail?.songs.orEmpty()
+                else -> source.albumSongs(browseId.removePrefix(NAVIDROME_ALBUM_PREFIX))
+                    .map { it.copy(albumName = it.albumName ?: title) }
+            }
+            val discography = detail?.albums.orEmpty().map { album ->
+                ShelfItem(
+                    title = album.title,
+                    subtitle = listOfNotNull(album.artist, album.year?.toString()).joinToString(" · "),
+                    thumbnailUrl = album.thumbnailUrl,
+                    videoId = null,
+                    browseId = NAVIDROME_ALBUM_PREFIX + album.id,
+                    origin = SongOrigin.NAVIDROME,
+                )
             }
             _detailStack.value = _detailStack.value.map { page ->
                 if (page.browseId == browseId && page.songs is UiState.Loading) {
                     page.copy(
+                        thumbnailUrl = page.thumbnailUrl ?: detail?.imageUrl,
+                        description = detail?.biography,
                         songs = if (songs.isEmpty()) {
                             UiState.Error(text(R.string.no_tracks_here))
                         } else {
                             UiState.Success(songs)
                         },
+                        sections = if (discography.isEmpty()) {
+                            page.sections
+                        } else {
+                            listOf(HomeShelf(title = text(R.string.discography), items = discography))
+                        },
+                        libraryArtist = isArtist,
                     )
                 } else {
                     page

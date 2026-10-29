@@ -212,8 +212,135 @@ fun SourcesScreen(
         // without the Nearby devices permission.
         val waiting = configs.any { it.enabled && it.awaitsLosslessOutput }
 
-        // User extensions keep their own group: theirs is the only order the
-        // user sets, and the drag belongs to that list.
+        // 1. Navidrome is the listener's own library, so it leads.
+        RemoteLibrarySection(
+            iconPainter = painterResource(R.drawable.ic_navidrome_light),
+            iconTint = Color.White,
+            title = stringResource(R.string.navidrome),
+            description = stringResource(R.string.navidrome_description),
+            subtitle = if (navidromeUrl.isBlank() || navidromeUsername.isBlank()) {
+                stringResource(R.string.navidrome_not_configured)
+            } else {
+                navidromeUrl
+            },
+            enabled = navidromeEnabled,
+            onToggle = { enabled ->
+                if (enabled && navidromeUrl.isBlank()) {
+                    onEditNavidrome()
+                } else {
+                    AppSettings.setNavidromeEnabled(enabled)
+                    onSourcesChanged()
+                }
+            },
+            onEdit = onEditNavidrome,
+        )
+
+        // 2. A future source, deliberately inert until it exists.
+        SettingsGroup(
+            header = stringResource(R.string.torbox),
+            footer = stringResource(R.string.torbox_description),
+        ) {
+            SettingsRow(
+                icon = Icons.Rounded.Cloud,
+                title = stringResource(R.string.torbox),
+                subtitle = stringResource(R.string.coming_soon),
+                enabled = false,
+            )
+        }
+
+        // 3. YouTube is a source like any other: no address to configure, but
+        // a switch of its own so it can be turned off without leaving the app.
+        if (youtube != null) {
+            RemoteLibrarySection(
+                icon = Icons.Rounded.PlayCircle,
+                title = stringResource(R.string.youtube_music),
+                description = stringResource(R.string.youtube_description),
+                subtitle = SourceKind.YOUTUBE.labels.joinToString(" · "),
+                configured = false,
+                onEdit = null,
+                enabled = youtube.enabled,
+                onToggle = { enabled ->
+                    SourceRegistry.setEnabled(youtube.id, enabled)
+                    onSourcesChanged()
+                },
+            )
+        }
+
+        // 4. WebDAV.
+        RemoteLibrarySection(
+            icon = Icons.Rounded.Cloud,
+            title = stringResource(R.string.webdav),
+            description = stringResource(R.string.webdav_description),
+            subtitle = if (webdavUrl.isBlank()) {
+                stringResource(R.string.webdav_not_configured)
+            } else if (webdavUsername.isNotBlank()) {
+                "$webdavUrl · $webdavUsername"
+            } else {
+                webdavUrl
+            },
+            listSubtitle = stringResource(R.string.webdav_subtitle),
+            disconnectTitle = stringResource(R.string.webdav_disconnect),
+            configured = webdavUrl.isNotBlank(),
+            testFailedRes = R.string.webdav_test_failed,
+            onEdit = onEditWebDav,
+            onTest = {
+                WebDavRepository.testConnection(webdavUrl, webdavUsername, webdavPassword)
+            },
+            onDisconnect = { AppSettings.clearWebDav() },
+        )
+
+        // 5. SMB.
+        RemoteLibrarySection(
+            icon = Icons.Rounded.Storage,
+            title = stringResource(R.string.smb),
+            description = stringResource(R.string.smb_description),
+            subtitle = if (smbHost.isBlank() || smbShare.isBlank()) {
+                stringResource(R.string.smb_not_configured)
+            } else if (smbUsername.isNotBlank()) {
+                "$smbHost · $smbShare · $smbUsername"
+            } else {
+                "$smbHost · $smbShare"
+            },
+            listSubtitle = stringResource(R.string.smb_subtitle),
+            disconnectTitle = stringResource(R.string.smb_disconnect),
+            configured = smbHost.isNotBlank() && smbShare.isNotBlank(),
+            testFailedRes = R.string.smb_test_failed,
+            onEdit = onEditSmb,
+            onTest = {
+                SmbRepository.testConnection(
+                    smbHost,
+                    smbShare,
+                    AppSettings.smbBasePath.value,
+                    smbUsername,
+                    smbPassword,
+                )
+            },
+            onDisconnect = { AppSettings.clearSmb() },
+        )
+
+        // 6. JioSaavn, with its own switch and opt-in warning.
+        if (jiosaavn != null) {
+            RemoteLibrarySection(
+                icon = Icons.Rounded.GraphicEq,
+                title = SourceKind.JIOSAAVN.label,
+                description = stringResource(R.string.jiosaavn_description),
+                subtitle = SourceKind.JIOSAAVN.labels.joinToString(" · "),
+                configured = false,
+                onEdit = null,
+                enabled = jiosaavn.enabled,
+                onToggle = { enabled ->
+                    if (enabled && !jiosaavn.enabled) {
+                        onConfirmJioSaavn()
+                    } else {
+                        SourceRegistry.setEnabled(jiosaavn.id, enabled)
+                        onSourcesChanged()
+                    }
+                },
+            )
+        }
+
+        // Extensions the user added keep their own group: theirs is the only
+        // order the user sets, and the drag belongs to that list.
         if (addons.isNotEmpty()) {
             SettingsGroup(header = stringResource(R.string.sources_extensions_header)) {
                 val row: @Composable (Int, SourceConfig, (@Composable () -> Unit)?) -> Unit =
@@ -246,138 +373,6 @@ fun SourcesScreen(
                 }
             }
         }
-
-        // YouTube is a source like any other: no address to configure, but a
-        // switch of its own so it can be turned off without leaving the app.
-        if (youtube != null) {
-            RemoteLibrarySection(
-                icon = Icons.Rounded.PlayCircle,
-                title = stringResource(R.string.youtube_music),
-                description = stringResource(R.string.youtube_description),
-                subtitle = SourceKind.YOUTUBE.labels.joinToString(" · "),
-                listSubtitle = "",
-                disconnectTitle = "",
-                configured = false,
-                testFailedRes = 0,
-                onEdit = null,
-                onTest = { Result.success(Unit) },
-                onDisconnect = {},
-                enabled = youtube.enabled,
-                onToggle = { enabled ->
-                    SourceRegistry.setEnabled(youtube.id, enabled)
-                    onSourcesChanged()
-                },
-            )
-        }
-
-        if (jiosaavn != null) {
-            RemoteLibrarySection(
-                icon = Icons.Rounded.GraphicEq,
-                title = SourceKind.JIOSAAVN.label,
-                description = SourceKind.JIOSAAVN.detail,
-                subtitle = SourceKind.JIOSAAVN.labels.joinToString(" · "),
-                listSubtitle = "",
-                disconnectTitle = "",
-                configured = false,
-                testFailedRes = 0,
-                onEdit = null,
-                onTest = { Result.success(Unit) },
-                onDisconnect = {},
-                enabled = jiosaavn.enabled,
-                onToggle = { enabled ->
-                    if (enabled && !jiosaavn.enabled) {
-                        onConfirmJioSaavn()
-                    } else {
-                        SourceRegistry.setEnabled(jiosaavn.id, enabled)
-                        onSourcesChanged()
-                    }
-                },
-            )
-        }
-
-        // A personal library rather than a catalogue in the order above: it
-        // holds the listener's own files instead of answering for YouTube's,
-        // so it takes no part in the ranking and gets its own group. The
-        // editor is raised to the activity like every other alert.
-        RemoteLibrarySection(
-            icon = Icons.Rounded.Cloud,
-            title = stringResource(R.string.webdav),
-            description = stringResource(R.string.webdav_description),
-            subtitle = if (webdavUrl.isBlank()) {
-                stringResource(R.string.webdav_not_configured)
-            } else if (webdavUsername.isNotBlank()) {
-                "$webdavUrl · $webdavUsername"
-            } else {
-                webdavUrl
-            },
-            listSubtitle = stringResource(R.string.webdav_subtitle),
-            disconnectTitle = stringResource(R.string.webdav_disconnect),
-            configured = webdavUrl.isNotBlank(),
-            testFailedRes = R.string.webdav_test_failed,
-            onEdit = onEditWebDav,
-            onTest = {
-                WebDavRepository.testConnection(webdavUrl, webdavUsername, webdavPassword)
-            },
-            onDisconnect = { AppSettings.clearWebDav() },
-        )
-
-        // A personal library on a file share, filed next to the WebDAV one
-        // for the same reason: it holds the listener's own files instead of
-        // answering for YouTube's, so it takes no part in the ranking above.
-        RemoteLibrarySection(
-            icon = Icons.Rounded.Storage,
-            title = stringResource(R.string.smb),
-            description = stringResource(R.string.smb_description),
-            subtitle = if (smbHost.isBlank() || smbShare.isBlank()) {
-                stringResource(R.string.smb_not_configured)
-            } else if (smbUsername.isNotBlank()) {
-                "$smbHost · $smbShare · $smbUsername"
-            } else {
-                "$smbHost · $smbShare"
-            },
-            listSubtitle = stringResource(R.string.smb_subtitle),
-            disconnectTitle = stringResource(R.string.smb_disconnect),
-            configured = smbHost.isNotBlank() && smbShare.isNotBlank(),
-            testFailedRes = R.string.smb_test_failed,
-            onEdit = onEditSmb,
-            onTest = {
-                SmbRepository.testConnection(
-                    smbHost,
-                    smbShare,
-                    AppSettings.smbBasePath.value,
-                    smbUsername,
-                    smbPassword,
-                )
-            },
-            onDisconnect = { AppSettings.clearSmb() },
-        )
-
-        // A music library, filed beside WebDAV and SMB rather than in the
-        // order above: it holds the listener's own collection, and the YouTube
-        // ordering has nothing to say about which of those local libraries
-        // should win. Its switch is the enabled flag the synthetic registry
-        // source reads; the editor is hosted by the activity, like the others.
-        RemoteLibrarySection(
-            iconPainter = painterResource(R.drawable.ic_navidrome_light),
-            iconTint = Color.White,
-            title = stringResource(R.string.navidrome),
-            description = stringResource(R.string.navidrome_description),
-            subtitle = if (navidromeUrl.isBlank() || navidromeUsername.isBlank()) {
-                stringResource(R.string.navidrome_not_configured)
-            } else {
-                navidromeUrl
-            },
-            enabled = navidromeEnabled,
-            onToggle = { enabled ->
-                if (enabled && navidromeUrl.isBlank()) {
-                    onEditNavidrome()
-                } else {
-                    AppSettings.setNavidromeEnabled(enabled)
-                    onSourcesChanged()
-                }
-            },
-            onEdit = onEditNavidrome,
-        )
 
         SettingsGroup(
             header = stringResource(R.string.source_matching),

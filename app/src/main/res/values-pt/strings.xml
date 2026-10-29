@@ -345,6 +345,9 @@
     <string name="your_playlists">Suas playlists</string>
     <string name="who_can_see_it">Quem pode ver isso</string>
     <string name="about_artist">Sobre o artista</string>
+    <string name="discography">Discografia</string>
+    <string name="popular">Populares</string>
+    <string name="artist_bio_placeholder">Ainda não há biografia disponível para este artista.</string>
     <string name="about_album">Sobre o álbum</string>
     <string name="nothing_matches">Nada aqui corresponde a “%1$s”</string>
     <string name="close_search">Fechar pesquisa</string>
@@ -429,6 +432,10 @@
     <string name="sources_order_footer">Se uma fonte não tiver a faixa, o BitChord tenta a próxima. Fontes acima do YouTube podem substituí-lo quando encontram uma versão melhor.</string>
     <string name="sources_order_header">Fontes, tentadas nesta ordem</string>
     <string name="sources_extensions_header">Extensões</string>
+    <string name="torbox">TorBox</string>
+    <string name="torbox_description">Uma fonte futura para mídia hospedada no TorBox. Ainda não há nada para configurar.</string>
+    <string name="coming_soon">Em breve</string>
+    <string name="jiosaavn_description">JioSaavn opcional, com streams de até 320kbps. A correspondência de catálogo pode selecionar a música errada.</string>
     <string name="youtube_music">YouTube Music</string>
     <string name="youtube_description">O catálogo completo, em Opus. Com perdas, sem versão lossless para pedir.</string>
     <string name="sources_quality_capped">Esta conexão está definida abaixo de Alta qualidade, então os fluxos são transcodificados. Downloads não são afetados.</string>
@@ -1327,6 +1334,10 @@
     <string name="artist_signatures_unconfigured">Não configurado — toque para definir a URL da API</string>
     <string name="artist_signatures_test_failed">Não foi possível alcançar a API nesse URL</string>
     <string name="search_source_addons">Addons</string>
+    <string name="search_navidrome_hint">Pesquise na sua biblioteca Navidrome</string>
+    <string name="search_youtube_hint">Pesquise no YouTube Music</string>
+    <string name="search_navidrome_empty">Pesquise na sua biblioteca Navidrome.</string>
+    <string name="search_youtube_empty">Pesquise no YouTube Music.</string>
     <string name="search_addons_none">Nenhum addon ativado. Adicione um em Configurações → Fontes.</string>
     <string name="app_icon">Ícone do app</string>
     <string name="app_icon_default">Padrão</string>

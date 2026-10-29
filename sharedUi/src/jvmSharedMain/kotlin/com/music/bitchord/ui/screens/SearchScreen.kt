@@ -149,6 +149,9 @@ fun SearchScreen(
     searchingAddons: Boolean = false,
     /** The Addons source's tracks for the submitted query; null until one is submitted. */
     addonResults: UiState<List<Song>>? = null,
+    /** Source-specific copy for the empty search field and empty result page. */
+    searchPlaceholder: String? = null,
+    searchEmptyHint: String? = null,
     /** Words searched in the Addons tab before, newest first; shown while the field is empty. */
     addonHistory: List<String> = emptyList(),
     onAddonHistoryClick: (String) -> Unit = {},
@@ -224,7 +227,7 @@ fun SearchScreen(
                     } else if (searchingAddons) {
                         stringResource(Res.string.search_addons_hint)
                     } else {
-                        stringResource(Res.string.search_hint)
+                        searchPlaceholder ?: stringResource(Res.string.search_hint)
                     },
                     modifier = Modifier.padding(start = PAGE_GUTTER, end = PAGE_GUTTER, bottom = 4.dp),
                 )
@@ -294,7 +297,7 @@ fun SearchScreen(
                     }
                 }
                 results == null -> if (history.isEmpty()) {
-                    item { MessageState(stringResource(Res.string.search_empty)) }
+                    item { MessageState(searchEmptyHint ?: stringResource(Res.string.search_empty)) }
                 } else {
                     recentSearches(
                         history = history,
@@ -431,7 +434,9 @@ private data class SearchSection(val title: String?, val rows: List<SearchResult
 private fun searchSections(rows: List<SearchResult>, filter: SearchFilter): List<SearchSection> {
     if (filter == SearchFilter.ALBUMS || filter == SearchFilter.ARTISTS) {
         val type = if (filter == SearchFilter.ALBUMS) BrowseType.ALBUM else BrowseType.ARTIST
-        val browse = rows.filterIsInstance<SearchResult.Browse>().filter { it.item.type == type }
+        val browse = rows.filterIsInstance<SearchResult.Browse>()
+            .filter { it.item.type == type }
+            .let { if (type == BrowseType.ARTIST) it.dedupeArtists() else it }
         val library = browse.filter { it.item.origin == SongOrigin.NAVIDROME }
         val youtube = browse.filter { it.item.origin == null }
         val other = browse.filter { it.item.origin != null && it.item.origin != SongOrigin.NAVIDROME }
@@ -475,13 +480,30 @@ private fun searchSections(rows: List<SearchResult>, filter: SearchFilter): List
     }
     if (filter == SearchFilter.ALL) {
         val browse = rows.filterIsInstance<SearchResult.Browse>()
-        sections += SearchSection("Artists", browse.filter { it.item.type == BrowseType.ARTIST })
+        sections += SearchSection(
+            "Artists",
+            browse.filter { it.item.type == BrowseType.ARTIST }.dedupeArtists(),
+        )
         sections += SearchSection("Albums", browse.filter { it.item.type == BrowseType.ALBUM })
         sections += SearchSection("Playlists", browse.filter { it.item.type == BrowseType.PLAYLIST })
         sections += SearchSection("More", browse.filter { it.item.type == BrowseType.OTHER })
     }
     return sections.filter { it.rows.isNotEmpty() }
 }
+
+/**
+ * One artist row per name, case-insensitive, regardless of which catalogue
+ * supplied it. A library card wins the identity; the album count is the sum
+ * the catalogues stated, so "Eminem" is not listed twice with two counts.
+ */
+private fun List<SearchResult.Browse>.dedupeArtists(): List<SearchResult.Browse> =
+    groupBy { it.item.title.trim().lowercase() }.map { (_, sameName) ->
+        val preferred = sameName.firstOrNull { it.item.origin == SongOrigin.NAVIDROME }
+            ?: sameName.first()
+        val counts = sameName.mapNotNull { it.item.albumCount }
+        val total = counts.takeIf { it.isNotEmpty() }?.sum()
+        if (total != null) preferred.copy(item = preferred.item.copy(albumCount = total)) else preferred
+    }
 
 /**
  * The Library source's page: the Local Music folder's tracks that match, as

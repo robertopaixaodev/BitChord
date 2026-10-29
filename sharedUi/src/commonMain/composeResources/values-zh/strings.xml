@@ -156,7 +156,7 @@
     <string name="retry">重试</string>
     <string name="saved_to_youtube_music">已保存到 YouTube Music</string>
     <string name="search">搜索</string>
-    <string name="search_empty">在 YouTube Music 上搜索数百万首歌曲。</string>
+    <string name="search_empty">Search your music.</string>
     <string name="search_hint">艺人、歌曲、歌词等</string>
     <string name="selected">已选择</string>
     <string name="share">分享</string>
@@ -205,4 +205,5 @@
     <string name="search_section_other">Other sources</string>
     <string name="connect_sources_title">Connect your music sources</string>
     <string name="connect_sources_action">Open Sources</string>
+    <string name="genre_empty">No tracks in this genre.</string>
 </resources>

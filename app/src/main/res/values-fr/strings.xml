@@ -1390,4 +1390,15 @@
     <string name="sources_extensions_header">Extensions</string>
     <string name="home_most_played">Most played</string>
     <string name="home_random">Random picks</string>
+    <string name="torbox">TorBox</string>
+    <string name="torbox_description">A future source for TorBox-hosted media. Nothing to configure yet.</string>
+    <string name="coming_soon">Coming soon</string>
+    <string name="jiosaavn_description">Optional JioSaavn streams at up to 320kbps. Catalogue matching can select the wrong song.</string>
+    <string name="search_navidrome_hint">Search your Navidrome library</string>
+    <string name="search_youtube_hint">Search YouTube Music</string>
+    <string name="search_navidrome_empty">Search your Navidrome library.</string>
+    <string name="search_youtube_empty">Search YouTube Music.</string>
+    <string name="discography">Discography</string>
+    <string name="popular">Popular</string>
+    <string name="artist_bio_placeholder">No biography available for this artist yet.</string>
 </resources>

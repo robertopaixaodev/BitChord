@@ -237,6 +237,45 @@ class NavidromeClientTest {
     }
 
     @Test
+    fun `artist detail and artist info parse albums and biography`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok","version":"1.16.1",
+                      "artist":{"id":"ar-1","name":"Metallica","coverArt":"ar-1",
+                        "albumCount":2,
+                        "album":[{"id":"album-1","name":"Enter Sandman","artist":"Metallica","year":1991}]}}}
+                    """.trimIndent(),
+                ),
+            )
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok","version":"1.16.1",
+                      "artistInfo2":{"biography":"A band.","largeImageUrl":"https://img/artist.jpg"}}}
+                    """.trimIndent(),
+                ),
+            )
+            val client = NavidromeClient(config(server))
+
+            val artist = client.artistDetail("ar-1")
+            val info = client.artistInfo("ar-1")
+
+            assertEquals("Metallica", artist?.name)
+            assertEquals("album-1", artist?.album?.single()?.id)
+            assertEquals("A band.", info?.biography)
+            assertEquals("https://img/artist.jpg", info?.largeImageUrl)
+            val artistUrl = server.takeRequest().requestUrl!!
+            assertEquals("/rest/getArtist.view", artistUrl.encodedPath)
+            assertEquals("ar-1", artistUrl.queryParameter("id"))
+            val infoUrl = server.takeRequest().requestUrl!!
+            assertEquals("/rest/getArtistInfo2.view", infoUrl.encodedPath)
+        }
+    }
+
+    @Test
     fun `stream URL keeps the song id and asks for raw lossless`() {
         MockWebServer().use { server ->
             server.start()

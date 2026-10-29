@@ -156,7 +156,7 @@
     <string name="retry">再試行</string>
     <string name="saved_to_youtube_music">YouTube Musicに保存済み</string>
     <string name="search">検索</string>
-    <string name="search_empty">YouTube Musicで何百万もの曲を検索できます。</string>
+    <string name="search_empty">Search your music.</string>
     <string name="search_hint">アーティスト、曲、歌詞など</string>
     <string name="selected">選択済み</string>
     <string name="share">共有</string>
@@ -205,4 +205,5 @@
     <string name="search_section_other">Other sources</string>
     <string name="connect_sources_title">Connect your music sources</string>
     <string name="connect_sources_action">Open Sources</string>
+    <string name="genre_empty">No tracks in this genre.</string>
 </resources>

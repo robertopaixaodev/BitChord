@@ -156,7 +156,7 @@
     <string name="retry">फिर कोशिश करें</string>
     <string name="saved_to_youtube_music">YouTube Music में सेव की गई</string>
     <string name="search">खोजें</string>
-    <string name="search_empty">YouTube Music पर लाखों गाने खोजें।</string>
+    <string name="search_empty">Search your music.</string>
     <string name="search_hint">कलाकार, गाने, लिरिक्स और बहुत कुछ</string>
     <string name="selected">चयनित</string>
     <string name="share">शेयर करें</string>
@@ -205,4 +205,5 @@
     <string name="search_section_other">Other sources</string>
     <string name="connect_sources_title">Connect your music sources</string>
     <string name="connect_sources_action">Open Sources</string>
+    <string name="genre_empty">No tracks in this genre.</string>
 </resources>

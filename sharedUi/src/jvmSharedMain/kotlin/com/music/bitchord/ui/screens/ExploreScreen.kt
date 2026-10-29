@@ -19,8 +19,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
@@ -47,11 +49,14 @@ import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.MoodGenre
 import com.music.bitchord.data.model.MoodGenreSection
 import com.music.bitchord.data.model.ShelfItem
+import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.model.SongOrigin
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.PAGE_GUTTER
 import com.music.bitchord.ui.components.PullToRefresh
 import com.music.bitchord.ui.components.ShimmerBox
+import com.music.bitchord.ui.components.SongRow
 import com.music.bitchord.ui.components.feedSkeleton
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -315,6 +320,11 @@ fun MoodGenrePlaylistsScreen(
     onRetry: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
+    /**
+     * A library genre is a flat running order, not a collection of playlist
+     * carousels: render its tracks as a numbered vertical list.
+     */
+    vertical: Boolean = false,
 ) {
     LazyColumn(
         state = listState,
@@ -336,8 +346,41 @@ fun MoodGenrePlaylistsScreen(
             is UiState.Error -> item {
                 MessageState(state.message, actionLabel = stringResource(Res.string.retry), onAction = onRetry)
             }
-            is UiState.Success -> items(state.data, key = { it.title }) { shelf ->
-                Shelf(shelf = shelf, onItemClick = onItemClick)
+            is UiState.Success -> if (vertical) {
+                val tracks = state.data.flatMap { it.items }.filter { it.videoId != null }
+                if (tracks.isEmpty()) {
+                    item { MessageState(stringResource(Res.string.genre_empty)) }
+                } else {
+                    itemsIndexed(
+                        items = tracks,
+                        key = { index, item -> "library-track-${item.videoId ?: index}" },
+                    ) { index, item ->
+                        val videoId = item.videoId ?: return@itemsIndexed
+                        SongRow(
+                            song = Song(
+                                videoId = videoId,
+                                title = item.title,
+                                artist = item.subtitle,
+                                thumbnailUrl = item.thumbnailUrl,
+                                sourceOrigin = SongOrigin.NAVIDROME,
+                            ),
+                            onClick = { onItemClick(item) },
+                            trackNumber = index + 1,
+                            rowBackground = MaterialTheme.colorScheme.background,
+                        )
+                        if (index < tracks.lastIndex) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = PAGE_GUTTER + 42.dp),
+                                thickness = 0.5.dp,
+                                color = MaterialTheme.colorScheme.outline,
+                            )
+                        }
+                    }
+                }
+            } else {
+                items(state.data, key = { it.title }) { shelf ->
+                    Shelf(shelf = shelf, onItemClick = onItemClick)
+                }
             }
         }
     }

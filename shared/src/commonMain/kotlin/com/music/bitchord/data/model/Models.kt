@@ -431,6 +431,8 @@ data class BrowseItem(
     val type: BrowseType,
     /** The catalogue that supplied this card, when it was not YouTube. */
     val origin: SongOrigin? = null,
+    /** Album count for an artist card, when the catalogue states one. */
+    val albumCount: Int? = null,
 )
 
 /** Search rows are heterogeneous once filters other than "Songs" are used. */
@@ -565,6 +567,8 @@ data class MoodGenre(
     val thumbnailUrl: String? = null,
     /** YouTube Music's own stripe colour for the button, as ARGB; null when the button carries none. */
     val stripeColor: Long? = null,
+    /** True for a category answered by the listener's own library. */
+    val isLibrary: Boolean = false,
 )
 
 /**
@@ -629,6 +633,12 @@ data class DetailPage(
      * fetched with a session; see [SubscriptionState].
      */
     val subscription: SubscriptionState? = null,
+    /**
+     * A Navidrome artist page: rendered as the library-style vertical profile
+     * (header, about, popular, discography) rather than YouTube's carousel
+     * layout. Set by [MainViewModel.openNavidromeDetail].
+     */
+    val libraryArtist: Boolean = false,
 )
 
 /**

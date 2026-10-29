@@ -31,6 +31,10 @@
     <string name="local_music">Local Music</string>
     <string name="search_source_youtube" translatable="false">YouTube</string>
     <string name="search_source_navidrome" translatable="false">Navidrome</string>
+    <string name="search_navidrome_hint">Search your Navidrome library</string>
+    <string name="search_youtube_hint">Search YouTube Music</string>
+    <string name="search_navidrome_empty">Search your Navidrome library.</string>
+    <string name="search_youtube_empty">Search YouTube Music.</string>
     <string name="search_source_addons">Addons</string>
     <string name="search_addons_none">No addons are enabled. Add one in Settings → Sources.</string>
     <string name="audio_files_on_device">Audio files on device</string>
@@ -543,6 +547,9 @@
     <string name="your_playlists">Your playlists</string>
     <string name="who_can_see_it">Who can see it</string>
     <string name="about_artist">About the artist</string>
+    <string name="discography">Discography</string>
+    <string name="popular">Popular</string>
+    <string name="artist_bio_placeholder">No biography available for this artist yet.</string>
     <string name="recent_album">Recent Album</string>
     <string name="recent_single">Recent Single</string>
     <string name="recent_ep">Recent EP</string>
@@ -665,6 +672,10 @@
     <string name="sources_order_footer">If a source does not have a track or cannot be reached, BitChord tries the next one. Sources above YouTube can replace its recording when they return a better version.</string>
     <string name="sources_order_header">Sources, tried in this order</string>
     <string name="sources_extensions_header">Extensions</string>
+    <string name="torbox">TorBox</string>
+    <string name="torbox_description">A future source for TorBox-hosted media. Nothing to configure yet.</string>
+    <string name="coming_soon">Coming soon</string>
+    <string name="jiosaavn_description">Optional JioSaavn streams at up to 320kbps. Catalogue matching can select the wrong song.</string>
     <string name="youtube_music">YouTube Music</string>
     <string name="youtube_description">The full catalogue, streamed at Opus. Lossy, with no lossless rendition to ask for.</string>
     <string name="sources_quality_capped">This connection is set below High quality, so streams are transcoded to fit that limit. Downloads are unaffected.</string>

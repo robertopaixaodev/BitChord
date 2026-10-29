@@ -128,6 +128,23 @@ internal data class NavidromeAlbumDetail(
 )
 
 @Serializable
+internal data class NavidromeArtistDetail(
+    val id: String = "",
+    val name: String = "",
+    @SerialName("coverArt") val coverArt: String? = null,
+    @SerialName("albumCount") val albumCount: Int? = null,
+    val album: List<NavidromeAlbum> = emptyList(),
+)
+
+@Serializable
+internal data class NavidromeArtistInfo(
+    val biography: String? = null,
+    @SerialName("largeImageUrl") val largeImageUrl: String? = null,
+    @SerialName("mediumImageUrl") val mediumImageUrl: String? = null,
+    @SerialName("smallImageUrl") val smallImageUrl: String? = null,
+)
+
+@Serializable
 private data class NavidromeError(
     val code: Int? = null,
     val message: String? = null,
@@ -144,6 +161,8 @@ private data class NavidromeBody(
     val artists: NavidromeArtistList? = null,
     @SerialName("songsByGenre") val songsByGenre: NavidromeSongs? = null,
     val album: NavidromeAlbumDetail? = null,
+    val artist: NavidromeArtistDetail? = null,
+    @SerialName("artistInfo2") val artistInfo: NavidromeArtistInfo? = null,
 )
 
 @Serializable
@@ -236,7 +255,11 @@ class NavidromeClient(
                 ),
             )
             body.searchResult?.artist.orEmpty()
-                .distinctBy { it.name.lowercase().ifBlank { it.id } }
+                .groupBy { it.name.lowercase() }
+                .map { (_, sameName) ->
+                    val first = sameName.first()
+                    first.copy(albumCount = sameName.mapNotNull { it.albumCount }.takeIf { it.isNotEmpty() }?.sum())
+                }
                 .take(limit)
         }
 
@@ -244,6 +267,18 @@ class NavidromeClient(
         withContext(Dispatchers.IO) {
             if (albumId.isBlank()) return@withContext emptyList()
             get("getAlbum.view", listOf("id" to albumId)).album?.song.orEmpty()
+        }
+
+    internal suspend fun artistDetail(artistId: String): NavidromeArtistDetail? =
+        withContext(Dispatchers.IO) {
+            if (artistId.isBlank()) return@withContext null
+            get("getArtist.view", listOf("id" to artistId)).artist
+        }
+
+    internal suspend fun artistInfo(artistId: String): NavidromeArtistInfo? =
+        withContext(Dispatchers.IO) {
+            if (artistId.isBlank()) return@withContext null
+            get("getArtistInfo2.view", listOf("id" to artistId)).artistInfo
         }
 
     internal suspend fun recentAlbums(limit: Int): List<NavidromeAlbum> =

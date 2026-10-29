@@ -159,7 +159,7 @@
     <string name="retry">Retry</string>
     <string name="saved_to_youtube_music">Saved to YouTube Music</string>
     <string name="search">Search</string>
-    <string name="search_empty">Search millions of songs on YouTube Music.</string>
+    <string name="search_empty">Search your music.</string>
     <string name="search_hint">Artists, Songs, Lyrics and More</string>
     <string name="search_library_empty">Search the songs in your Local Music folder.</string>
     <string name="search_library_hint">Songs, Artists and Albums</string>
@@ -168,6 +168,7 @@
     <string name="search_section_other">Other sources</string>
     <string name="connect_sources_title">Connect your music sources</string>
     <string name="connect_sources_action">Open Sources</string>
+    <string name="genre_empty">No tracks in this genre.</string>
     <string name="search_addons_hint">Search your addons</string>
     <string name="search_addons_empty">Search every enabled addon at once. Tracks play straight from the addon.</string>
     <string name="search_addons_no_results">No addon has “%1$s”.</string>
