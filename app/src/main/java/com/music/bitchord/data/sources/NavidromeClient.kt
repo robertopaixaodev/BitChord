@@ -58,6 +58,8 @@ internal data class NavidromeSong(
 @Serializable
 private data class NavidromeSearchResult(
     val song: List<NavidromeSong> = emptyList(),
+    val album: List<NavidromeAlbum> = emptyList(),
+    val artist: List<NavidromeArtist> = emptyList(),
 )
 
 @Serializable
@@ -118,6 +120,14 @@ private data class NavidromeAlbumList(
 )
 
 @Serializable
+internal data class NavidromeAlbumDetail(
+    val id: String = "",
+    val name: String = "",
+    val artist: String? = null,
+    val song: List<NavidromeSong> = emptyList(),
+)
+
+@Serializable
 private data class NavidromeError(
     val code: Int? = null,
     val message: String? = null,
@@ -133,6 +143,7 @@ private data class NavidromeBody(
     val genres: NavidromeGenreList? = null,
     val artists: NavidromeArtistList? = null,
     @SerialName("songsByGenre") val songsByGenre: NavidromeSongs? = null,
+    val album: NavidromeAlbumDetail? = null,
 )
 
 @Serializable
@@ -192,6 +203,42 @@ class NavidromeClient(
                 ),
             )
             body.searchResult?.song.orEmpty().take(limit)
+        }
+
+    internal suspend fun searchAlbums(query: String, limit: Int): List<NavidromeAlbum> =
+        withContext(Dispatchers.IO) {
+            if (query.isBlank() || limit <= 0) return@withContext emptyList()
+            val body = get(
+                "search3.view",
+                listOf(
+                    "query" to query,
+                    "songCount" to "0",
+                    "albumCount" to limit.toString(),
+                    "artistCount" to "0",
+                ),
+            )
+            body.searchResult?.album.orEmpty().take(limit)
+        }
+
+    internal suspend fun searchArtists(query: String, limit: Int): List<NavidromeArtist> =
+        withContext(Dispatchers.IO) {
+            if (query.isBlank() || limit <= 0) return@withContext emptyList()
+            val body = get(
+                "search3.view",
+                listOf(
+                    "query" to query,
+                    "songCount" to "0",
+                    "albumCount" to "0",
+                    "artistCount" to limit.toString(),
+                ),
+            )
+            body.searchResult?.artist.orEmpty().take(limit)
+        }
+
+    internal suspend fun albumSongs(albumId: String): List<NavidromeSong> =
+        withContext(Dispatchers.IO) {
+            if (albumId.isBlank()) return@withContext emptyList()
+            get("getAlbum.view", listOf("id" to albumId)).album?.song.orEmpty()
         }
 
     internal suspend fun recentAlbums(limit: Int): List<NavidromeAlbum> =

@@ -383,7 +383,15 @@ fun SearchScreen(
                                 is SearchResult.Browse -> BrowseRow(
                                     item = row.item,
                                     onClick = { onBrowseClick(row.item) },
-                                    onLongPress = onBrowseLongPress?.let { { it(row.item) } },
+                                    // YouTube's browse actions (save, download,
+                                    // queue) do not exist for a library page;
+                                    // holding its card should not open a menu
+                                    // that would ask YouTube about it.
+                                    onLongPress = if (row.item.origin == null) {
+                                        onBrowseLongPress?.let { { it(row.item) } }
+                                    } else {
+                                        null
+                                    },
                                 )
                             }
                             if (index < section.rows.lastIndex) {
@@ -421,11 +429,27 @@ private data class SearchSection(val title: String?, val rows: List<SearchResult
  */
 @Composable
 private fun searchSections(rows: List<SearchResult>, filter: SearchFilter): List<SearchSection> {
+    if (filter == SearchFilter.ALBUMS || filter == SearchFilter.ARTISTS) {
+        val type = if (filter == SearchFilter.ALBUMS) BrowseType.ALBUM else BrowseType.ARTIST
+        val browse = rows.filterIsInstance<SearchResult.Browse>().filter { it.item.type == type }
+        val library = browse.filter { it.item.origin == SongOrigin.NAVIDROME }
+        val youtube = browse.filter { it.item.origin == null }
+        val other = browse.filter { it.item.origin != null && it.item.origin != SongOrigin.NAVIDROME }
+        return buildList {
+            if (library.isNotEmpty()) {
+                add(SearchSection(stringResource(Res.string.search_section_library), library))
+            }
+            if (youtube.isNotEmpty()) {
+                add(SearchSection(stringResource(Res.string.search_section_youtube), youtube))
+            }
+            if (other.isNotEmpty()) {
+                add(SearchSection(stringResource(Res.string.search_section_other), other))
+            }
+        }
+    }
     if (filter != SearchFilter.ALL && filter != SearchFilter.SONGS) {
         val browse = rows.filterIsInstance<SearchResult.Browse>()
         val filtered = when (filter) {
-            SearchFilter.ALBUMS -> browse.filter { it.item.type == BrowseType.ALBUM }
-            SearchFilter.ARTISTS -> browse.filter { it.item.type == BrowseType.ARTIST }
             SearchFilter.PLAYLISTS -> browse.filter { it.item.type == BrowseType.PLAYLIST }
             else -> rows
         }

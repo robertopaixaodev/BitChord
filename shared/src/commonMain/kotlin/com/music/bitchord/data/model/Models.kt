@@ -429,6 +429,8 @@ data class BrowseItem(
     val subtitle: String,
     val thumbnailUrl: String?,
     val type: BrowseType,
+    /** The catalogue that supplied this card, when it was not YouTube. */
+    val origin: SongOrigin? = null,
 )
 
 /** Search rows are heterogeneous once filters other than "Songs" are used. */

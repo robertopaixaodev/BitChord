@@ -181,6 +181,63 @@ class NavidromeSource(
         }
     }
 
+    /** Albums matching [query], for the Albums search tab. */
+    suspend fun searchAlbums(query: String, limit: Int = 12): List<Album> =
+        withContext(Dispatchers.IO) {
+            if (query.isBlank() || limit <= 0) return@withContext emptyList()
+            try {
+                client.searchAlbums(query, limit).take(limit).map { row ->
+                    Album(
+                        id = row.id,
+                        title = row.name.ifBlank { "Unknown Album" },
+                        artist = row.artist?.takeIf { it.isNotBlank() },
+                        thumbnailUrl = row.coverArt?.let(client::coverUrl),
+                        year = row.year,
+                        songCount = row.songCount,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                TrackLog.w(TAG, "Navidrome album search failed for '$query': ${e.message}")
+                emptyList()
+            }
+        }
+
+    /** Artists matching [query], for the Artists search tab. */
+    suspend fun searchArtists(query: String, limit: Int = 12): List<SourceArtist> =
+        withContext(Dispatchers.IO) {
+            if (query.isBlank() || limit <= 0) return@withContext emptyList()
+            try {
+                client.searchArtists(query, limit).take(limit).map { artist ->
+                    SourceArtist(
+                        id = artist.id,
+                        name = artist.name,
+                        albumCount = artist.albumCount,
+                        thumbnailUrl = artist.coverArt?.let(client::coverUrl),
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                TrackLog.w(TAG, "Navidrome artist search failed for '$query': ${e.message}")
+                emptyList()
+            }
+        }
+
+    /** Every track on [albumId], in the server's own order. */
+    suspend fun albumSongs(albumId: String): List<Song> = withContext(Dispatchers.IO) {
+        if (albumId.isBlank()) return@withContext emptyList()
+        try {
+            client.albumSongs(albumId).map(::remember)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            TrackLog.w(TAG, "Navidrome album tracks failed for '$albumId': ${e.message}")
+            emptyList()
+        }
+    }
+
     override suspend fun stream(trackId: String, request: StreamRequest): SourceStream? {
         if (trackId.isBlank()) return null
         return try {

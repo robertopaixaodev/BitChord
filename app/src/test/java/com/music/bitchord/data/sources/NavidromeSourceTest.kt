@@ -89,6 +89,59 @@ class NavidromeSourceTest {
     }
 
     @Test
+    fun `album and artist results map to browse-ready models`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok",
+                      "searchResult3":{
+                        "album":[{"id":"album-1","name":"Enter Sandman","artist":"Metallica","coverArt":"cover-1","year":1991}],
+                        "artist":[{"id":"ar-1","name":"Metallica","albumCount":10,"coverArt":"ar-1"}]
+                      }}}
+                    """.trimIndent(),
+                ),
+            )
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok",
+                      "searchResult3":{
+                        "album":[{"id":"album-1","name":"Enter Sandman","artist":"Metallica","coverArt":"cover-1","year":1991}],
+                        "artist":[{"id":"ar-1","name":"Metallica","albumCount":10,"coverArt":"ar-1"}]
+                      }}}
+                    """.trimIndent(),
+                ),
+            )
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok",
+                      "album":{"id":"album-1","name":"Enter Sandman","artist":"Metallica",
+                        "song":[{"id":"song-1","title":"Enter Sandman","artist":"Metallica",
+                          "suffix":"flac","bitRate":1411}]}}}
+                    """.trimIndent(),
+                ),
+            )
+            val config = config(server)
+            val source = NavidromeSource(config.configId, config)
+
+            val albums = source.searchAlbums("Metallica", 5)
+            val artists = source.searchArtists("Metallica", 5)
+            val songs = source.albumSongs("album-1")
+
+            assertEquals("album-1", albums.single().id)
+            assertEquals(1991, albums.single().year)
+            assertNotNull(albums.single().thumbnailUrl)
+            assertEquals("ar-1", artists.single().id)
+            assertNotNull(artists.single().thumbnailUrl)
+            assertEquals("Enter Sandman", songs.single().title)
+            assertEquals(SongOrigin.NAVIDROME, songs.single().sourceOrigin)
+        }
+    }
+
+    @Test
     fun `stream reuses the cached row and builds a Subsonic URL`() = runBlocking {
         MockWebServer().use { server ->
             server.start()

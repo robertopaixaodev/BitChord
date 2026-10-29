@@ -181,6 +181,61 @@ class NavidromeClientTest {
     }
 
     @Test
+    fun `album and artist search return browse entities and album tracks`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok","version":"1.16.1",
+                      "searchResult3":{
+                        "album":[{"id":"album-1","name":"Enter Sandman","artist":"Metallica","year":1991}],
+                        "artist":[{"id":"ar-1","name":"Metallica","albumCount":10}]
+                      }}}
+                    """.trimIndent(),
+                ),
+            )
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok","version":"1.16.1",
+                      "searchResult3":{
+                        "album":[{"id":"album-1","name":"Enter Sandman","artist":"Metallica","year":1991}],
+                        "artist":[{"id":"ar-1","name":"Metallica","albumCount":10}]
+                      }}}
+                    """.trimIndent(),
+                ),
+            )
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"subsonic-response":{"status":"ok","version":"1.16.1",
+                      "album":{"id":"album-1","name":"Enter Sandman","artist":"Metallica",
+                        "song":[{"id":"song-1","title":"Enter Sandman","artist":"Metallica"}]}}}
+                    """.trimIndent(),
+                ),
+            )
+            val client = NavidromeClient(config(server))
+
+            val albums = client.searchAlbums("Metallica", 5)
+            val artists = client.searchArtists("Metallica", 5)
+            val songs = client.albumSongs("album-1")
+
+            assertEquals("album-1", albums.single().id)
+            assertEquals("ar-1", artists.single().id)
+            assertEquals("song-1", songs.single().id)
+            val albumUrl = server.takeRequest().requestUrl!!
+            assertEquals("5", albumUrl.queryParameter("albumCount"))
+            assertEquals("0", albumUrl.queryParameter("songCount"))
+            val artistUrl = server.takeRequest().requestUrl!!
+            assertEquals("5", artistUrl.queryParameter("artistCount"))
+            val albumSongsUrl = server.takeRequest().requestUrl!!
+            assertEquals("/rest/getAlbum.view", albumSongsUrl.encodedPath)
+            assertEquals("album-1", albumSongsUrl.queryParameter("id"))
+        }
+    }
+
+    @Test
     fun `stream URL keeps the song id and asks for raw lossless`() {
         MockWebServer().use { server ->
             server.start()

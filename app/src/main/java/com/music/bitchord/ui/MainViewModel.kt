@@ -35,6 +35,7 @@ import com.music.bitchord.auth.WebSessionMode
 import com.music.bitchord.data.model.Account
 import com.music.bitchord.data.model.AccountChannel
 import com.music.bitchord.data.model.BrowseType
+import com.music.bitchord.data.model.BrowseItem
 import com.music.bitchord.data.model.DetailPage
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.withoutRepeatsOf
@@ -48,6 +49,7 @@ import com.music.bitchord.data.model.SearchFilter
 import com.music.bitchord.data.model.SearchResult
 import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.model.SongOrigin
 import com.music.bitchord.data.model.SongMenu
 import com.music.bitchord.data.model.SubscriptionState
 import com.music.bitchord.data.model.UiState
@@ -2517,10 +2519,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * at the top of the results — which is the whole point of ranking it there —
      * and one ranked below appears under them instead.
      *
-     * Only Songs and the mixed All tab fan out: albums, artists and playlists
-     * are browse-shaped, and [MusicSource] deliberately answers for tracks only.
-     * The All tab gets the same track rows, which the search screen files under
-     * its Songs section.
+     * Albums and artists are answered by the library as entities; Songs and the
+     * mixed All tab get its tracks. Playlists stay YouTube's own.
      *
      * Asked of the playback list rather than every enabled source, so a result
      * offered here is one this connection's ceiling would actually let play —
@@ -2532,8 +2532,53 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         filter: SearchFilter,
     ): Pair<List<SearchResult>, List<SearchResult>> = coroutineScope {
         val active = SourceRegistry.activeForPlayback()
-        // Songs and the mixed "All" tab ask the same catalogues. Albums,
-        // artists and playlists are browse-shaped and stay YouTube's alone.
+        // Albums and artists come from the library too, when it has them: the
+        // tab should not be a YouTube-only page with the listener's own
+        // collection missing. Navidrome is the only source that answers these
+        // as entities, so it supplies browse cards while YouTube supplies its
+        // own below.
+        if (filter == SearchFilter.ALBUMS || filter == SearchFilter.ARTISTS) {
+            val navidrome = active.firstOrNull { it.kind == SourceKind.NAVIDROME } as? NavidromeSource
+                ?: return@coroutineScope emptyList<SearchResult>() to emptyList()
+            val rows = when (filter) {
+                SearchFilter.ALBUMS -> navidrome.searchAlbums(query, SOURCE_SEARCH_LIMIT).map { album ->
+                    SearchResult.Browse(
+                        BrowseItem(
+                            browseId = NAVIDROME_ALBUM_PREFIX + album.id,
+                            title = album.title,
+                            subtitle = listOfNotNull(
+                                album.artist,
+                                album.year?.toString(),
+                            ).joinToString(" · "),
+                            thumbnailUrl = album.thumbnailUrl,
+                            type = BrowseType.ALBUM,
+                            origin = SongOrigin.NAVIDROME,
+                        ),
+                    )
+                }
+                else -> navidrome.searchArtists(query, SOURCE_SEARCH_LIMIT).map { artist ->
+                    SearchResult.Browse(
+                        BrowseItem(
+                            browseId = NAVIDROME_ARTIST_PREFIX + artist.id,
+                            title = artist.name,
+                            subtitle = artist.albumCount?.let {
+                                getApplication<Application>().resources.getQuantityString(
+                                    R.plurals.artist_count,
+                                    it,
+                                    it,
+                                )
+                            }.orEmpty(),
+                            thumbnailUrl = artist.thumbnailUrl,
+                            type = BrowseType.ARTIST,
+                            origin = SongOrigin.NAVIDROME,
+                        ),
+                    )
+                }
+            }
+            return@coroutineScope rows.toList() to emptyList()
+        }
+        // Songs and the mixed "All" tab ask the same catalogues. Playlists stay
+        // YouTube's alone.
         if (filter != SearchFilter.SONGS && filter != SearchFilter.ALL) {
             return@coroutineScope emptyList<SearchResult>() to emptyList()
         }
@@ -2676,6 +2721,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         /** Synthetic category ids for Navidrome's own Explore grid. */
         private const val NAVIDROME_GENRE_PREFIX = "navidrome:genre:"
         private const val NAVIDROME_ARTIST_PREFIX = "navidrome:artist:"
+        private const val NAVIDROME_ALBUM_PREFIX = "navidrome:album:"
 
         /**
          * What a page with an empty listing says.
@@ -2752,6 +2798,53 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * A Navidrome album or artist page, built from the source's own track list
+     * rather than YouTube's browse endpoint.
+     */
+    private fun openNavidromeDetail(
+        browseId: String,
+        title: String,
+        subtitle: String,
+        thumbnailUrl: String?,
+        type: BrowseType,
+    ) {
+        _detailStack.value += DetailPage(
+            browseId = browseId,
+            title = title,
+            subtitle = subtitle,
+            thumbnailUrl = thumbnailUrl,
+            songs = UiState.Loading,
+            type = type,
+        )
+        viewModelScope.launch {
+            val source = navidromeSource()
+            val songs = when {
+                source == null -> emptyList()
+                type == BrowseType.ALBUM ->
+                    source.albumSongs(browseId.removePrefix(NAVIDROME_ALBUM_PREFIX))
+                        .map { it.copy(albumName = it.albumName ?: title) }
+                else -> source.songsByArtist(title)
+            }
+            _detailStack.value = _detailStack.value.map { page ->
+                if (page.browseId == browseId && page.songs is UiState.Loading) {
+                    page.copy(
+                        songs = if (songs.isEmpty()) {
+                            UiState.Error(text(R.string.no_tracks_here))
+                        } else {
+                            UiState.Success(songs)
+                        },
+                    )
+                } else {
+                    page
+                }
+            }
+        }
+    }
+
+    private fun navidromeSource(): NavidromeSource? =
+        SourceRegistry.active().firstOrNull { it.kind == SourceKind.NAVIDROME } as? NavidromeSource
+
     fun openDetail(
         browseId: String,
         title: String,
@@ -2768,6 +2861,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 it.browseId == browseId && it.songs is UiState.Loading
             } == true
         ) return
+        if (browseId.startsWith(NAVIDROME_ALBUM_PREFIX)) {
+            openNavidromeDetail(
+                browseId = browseId,
+                title = title,
+                subtitle = subtitle,
+                thumbnailUrl = thumbnailUrl,
+                type = BrowseType.ALBUM,
+            )
+            return
+        }
+        if (browseId.startsWith(NAVIDROME_ARTIST_PREFIX)) {
+            openNavidromeDetail(
+                browseId = browseId,
+                title = title,
+                subtitle = subtitle,
+                thumbnailUrl = thumbnailUrl,
+                type = BrowseType.ARTIST,
+            )
+            return
+        }
         if (browseId.startsWith(SPOTIFY_PAGE_PREFIX)) {
             openSpotifyPage(browseId, title, subtitle, thumbnailUrl)
             return
